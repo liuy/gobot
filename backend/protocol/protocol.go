@@ -15,14 +15,11 @@ package protocol
 
 import (
 	"fmt"
-	"log"
-	"os"
 	"time"
 
+	"gobot/log"
 	"golang.org/x/net/websocket"
 )
-
-var logger = log.New(os.Stdout, "", 0)
 
 // Type Definitions
 
@@ -217,10 +214,10 @@ func HandleChatSend(conn *websocket.Conn, req WSRequest) error {
 	for i := 0; i < len(thinkingText); i++ {
 		err := sendAgent("reasoning", string(thinkingText[i]))
 		if err != nil {
-			logger.Println("[ERROR] sendAgent reasoning:", err)
+			log.Error("sendAgent reasoning: %v", err)
 			break
 		}
-		logger.Println("[DEBUG] sent reasoning delta:", string(thinkingText[i]))
+		log.Debug("sent reasoning delta: %s", string(thinkingText[i]))
 		time.Sleep(30 * time.Millisecond)
 	}
 
@@ -229,10 +226,10 @@ func HandleChatSend(conn *websocket.Conn, req WSRequest) error {
 	for i := 0; i < len(response); i++ {
 		err := sendAgent("content", string(response[i]))
 		if err != nil {
-			logger.Println("[ERROR] sendAgent content:", err)
+			log.Error("sendAgent content: %v", err)
 			break
 		}
-		logger.Println("[DEBUG] sent content delta:", string(response[i]))
+		log.Debug("sent content delta: %s", string(response[i]))
 		time.Sleep(50 * time.Millisecond)
 	}
 

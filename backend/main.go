@@ -15,9 +15,9 @@ package main
 import (
 	"embed"
 	"io/fs"
-	"log"
 	"net/http"
 
+	"gobot/log"
 	"gobot/protocol"
 	"golang.org/x/net/websocket"
 )
@@ -46,9 +46,9 @@ func main() {
 	frontendFS, _ := fs.Sub(staticFiles, "frontend")
 	http.Handle("/", http.FileServer(http.FS(frontendFS)))
 
-	log.Println("[INFO] WebSocket server starting on localhost", DefaultPort)
-	log.Println("[INFO] WebSocket endpoint: ws://127.0.0.1" + DefaultPort + "/ws")
-	log.Fatal("[ERROR] Server failed:", http.ListenAndServe(DefaultPort, nil))
+	log.Info("WebSocket server starting on localhost %s", DefaultPort)
+	log.Info("WebSocket endpoint: ws://127.0.0.1%s/ws", DefaultPort)
+	log.Fatal("Server failed: %v", http.ListenAndServe(DefaultPort, nil))
 }
 
 // FUNC SPEC: handleWebSocket
@@ -64,7 +64,7 @@ func main() {
 // INTENT:
 func handleWebSocket(ws *websocket.Conn) {
 	if err := protocol.SendConnectChallenge(ws); err != nil {
-		log.Println("[ERROR] SendConnectChallenge:", err)
+		log.Error("SendConnectChallenge: %v", err)
 		_ = ws.Close()
 		return
 	}
@@ -72,15 +72,15 @@ func handleWebSocket(ws *websocket.Conn) {
 		var req protocol.WSRequest
 		if err := websocket.JSON.Receive(ws, &req); err != nil {
 			if err.Error() == "EOF" {
-				log.Println("[INFO] Client disconnected")
+				log.Info("Client disconnected")
 			} else {
-				log.Println("[ERROR] Receive:", err)
+				log.Error("Receive: %v", err)
 			}
 			_ = ws.Close()
 			return
 		}
 		if err := protocol.HandleMessage(ws, req); err != nil {
-			log.Println("[ERROR] HandleMessage:", err)
+			log.Error("HandleMessage: %v", err)
 			_ = ws.Close()
 			return
 		}
