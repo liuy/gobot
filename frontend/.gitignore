@@ -1,0 +1,39 @@
+# v0 runtime files (should only exist in preview, not in git)
+__v0_runtime_loader.js
+__v0_devtools.tsx
+__v0_jsx-dev-runtime.ts
+instrumentation-client.js
+instrumentation-client.ts
+
+# Common ignores
+node_modules/
+tsconfig.tsbuildinfo
+.next/
+.next-ios/
+.env*.local
+.DS_Store
+.mcp.json
+test-results/
+playwright-report/
+blob-report/
+logs.jsonl
+.vercel
+
+
+# Xcode
+ios/MobileClaw.xcodeproj/xcuserdata/
+ios/MobileClaw.xcodeproj/project.xcworkspace/xcuserdata/
+ios/build/
+*.xcuserstate
+
+# Next.js static export
+out/
+ios/MobileClaw/Resources/web/
+.api_backup_for_export/
+
+# Claude
+.claude/
+.codex/
+worktrees
+
+pnpm-lock.yaml

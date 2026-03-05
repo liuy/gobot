@@ -1,0 +1,362 @@
+package protocol
+
+// MODULE SPEC: protocol
+//
+// RELY:
+//   - golang.org/x/net/websocket for WebSocket communication
+//
+// GUARANTEE:
+//   - Implements OpenClaw Gateway protocol version 3
+//   - Sends connect.challenge on new connection
+//   - Authenticates via token in connect request
+//   - Handles chat.send with streaming response (reasoning + content)
+//   - Handles chat.history, server.commands, sessions.list methods
+//   - Dispatches incoming messages to appropriate handlers
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"time"
+
+	"golang.org/x/net/websocket"
+)
+
+var logger = log.New(os.Stdout, "", 0)
+
+// Type Definitions
+
+type WSRequest struct {
+	Type   string         `json:"type"`
+	ID     string         `json:"id"`
+	Method string         `json:"method"`
+	Params map[string]any `json:"params,omitempty"`
+}
+
+type WSResponse struct {
+	Type    string `json:"type"` // "res"
+	ID      string `json:"id"`
+	OK      bool   `json:"ok"`
+	Payload any    `json:"payload,omitempty"`
+	Error   any    `json:"error,omitempty"`
+}
+
+type WSEvent struct {
+	Type    string `json:"type"` // "res"
+	Event   string `json:"event"`
+	Payload any    `json:"payload,omitempty"`
+}
+
+type ConnectChallengePayload struct {
+	Nonce string `json:"nonce"`
+	TS    int64  `json:"ts"`
+}
+
+type HelloOkPayload struct {
+	Type     string    `json:"type"`
+	Protocol int       `json:"protocol"`
+	Features *Features `json:"features,omitempty"`
+	Auth     *Auth     `json:"auth,omitempty"`
+	Policy   *Policy   `json:"policy,omitempty"`
+}
+
+type Features struct {
+	Methods []string `json:"methods,omitempty"`
+	Events  []string `json:"events,omitempty"`
+}
+
+type Auth struct {
+	DeviceToken *string  `json:"deviceToken,omitempty"`
+	Role        *string `json:"role,omitempty"`
+	Scopes      []string `json:"scopes,omitempty"`
+	IssuedAtMs  *int64   `json:"issuedAtMs,omitempty"`
+}
+
+type Policy struct {
+	TickIntervalMs *int64 `json:"tickIntervalMs,omitempty"`
+}
+
+type ConnectErrorPayload struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type ChatEventPayload struct {
+	State   string       `json:"state"`
+	Message *ChatMessage `json:"message,omitempty"`
+}
+
+type ChatMessage struct {
+	Role      string      `json:"role"`
+	Content   any `json:"content"`
+	Timestamp int64       `json:"timestamp"`
+}
+
+// Constants
+
+const (
+	ProtocolVersion = 3
+	ValidToken      = "123456"
+)
+
+// FUNC SPEC: SendConnectChallenge
+//
+// PRE:
+//   - conn is a valid WebSocket connection
+//   - conn is open and ready for writing
+//
+// POST:
+//   - Sends {"type":"event","event":"connect.challenge","payload":{"nonce":"<nanos>","ts":<millis>}}
+//   - Returns error if JSON serialization or write fails
+//
+// INTENT:
+//   - Initiate connection handshake by sending challenge to client
+func SendConnectChallenge(conn *websocket.Conn) error {
+	return websocket.JSON.Send(conn, WSEvent{
+		Type:  "event",
+		Event: "connect.challenge",
+		Payload: ConnectChallengePayload{
+			Nonce: fmt.Sprintf("%d", time.Now().UnixNano()),
+			TS:    time.Now().UnixMilli(),
+		},
+	})
+}
+
+// FUNC SPEC: HandleConnect
+//
+// PRE:
+//   - conn is a valid WebSocket connection
+//   - conn is open and ready for writing
+//   - req.Method == "connect"
+//   - req.Params["auth"]["token"] exists (string)
+//
+// POST:
+//   - Case token == "123456": sends WSResponse{OK:true, Payload:HelloOkPayload}
+//   - Case token != "123456": sends WSEvent{Event:"connect.error"} + returns error
+//
+// INTENT:
+//   - Authenticate client connection via token validation
+func HandleConnect(conn *websocket.Conn, req WSRequest) error {
+	auth, _ := req.Params["auth"].(map[string]any)
+	token, _ := auth["token"].(string)
+	if token == ValidToken {
+		return websocket.JSON.Send(conn, WSResponse{
+			Type: "res",
+			ID:   req.ID,
+			OK:   true,
+			Payload: HelloOkPayload{
+				Type:     "hello-ok",
+				Protocol: ProtocolVersion,
+			},
+		})
+	}
+	_ = websocket.JSON.Send(conn, WSEvent{
+		Type:  "event",
+		Event: "connect.error",
+		Payload: ConnectErrorPayload{
+			Code:    "invalid_token",
+			Message: "Invalid Token",
+		},
+	})
+	return fmt.Errorf("Invalid Token")
+}
+
+// FUNC SPEC: HandleChatSend
+//
+// PRE:
+//   - conn is a valid WebSocket connection
+//   - conn is open and ready for writing
+//   - req.Method == "chat.send"
+//   - req.Params["message"] exists (string)
+//   - req.Params["sessionKey"] exists (string)
+//
+// POST:
+//   - Sends agent events with stream="reasoning" (empty, then streaming text)
+//   - Sends agent events with stream="content" (character-by-character)
+//   - Sends final chat event with state="final" and assistant message
+//   - Returns error if any send fails
+//
+// INTENT:
+//   - Simulate AI response with streaming reasoning and content for demo purposes
+func HandleChatSend(conn *websocket.Conn, req WSRequest) error {
+	content, _ := req.Params["message"].(string)
+	sessionKey, _ := req.Params["sessionKey"].(string)
+	runId := req.ID
+
+	// Helper to send agent event
+	sendAgent := func(stream string, delta string) error {
+		return websocket.JSON.Send(conn, WSEvent{
+			Type:  "event",
+			Event: "agent",
+			Payload: map[string]any{
+				"runId":       runId,
+				"sessionKey":  sessionKey,
+				"stream":      stream,
+				"data":        map[string]string{"delta": delta},
+				"ts":          time.Now().UnixMilli(),
+			},
+		})
+	}
+
+	// Send reasoning block start to trigger "Thinking..." animation
+	_ = websocket.JSON.Send(conn, WSEvent{
+		Type:  "event",
+		Event: "agent",
+		Payload: map[string]any{
+			"runId":      runId,
+			"sessionKey": sessionKey,
+			"stream":     "reasoning",
+			"data":       map[string]any{"newBlock": true},
+			"ts":         time.Now().UnixMilli(),
+		},
+	})
+	time.Sleep(300 * time.Millisecond)
+
+	// Simulate thinking with streaming
+	thinkingText := "I am an echo server built with Go and WebSocket.\nI will echo back your message with a prefix.\n"
+	for i := 0; i < len(thinkingText); i++ {
+		err := sendAgent("reasoning", string(thinkingText[i]))
+		if err != nil {
+			logger.Println("[ERROR] sendAgent reasoning:", err)
+			break
+		}
+		logger.Println("[DEBUG] sent reasoning delta:", string(thinkingText[i]))
+		time.Sleep(30 * time.Millisecond)
+	}
+
+	// Simulate streaming content
+	response := "Echo: " + content
+	for i := 0; i < len(response); i++ {
+		err := sendAgent("content", string(response[i]))
+		if err != nil {
+			logger.Println("[ERROR] sendAgent content:", err)
+			break
+		}
+		logger.Println("[DEBUG] sent content delta:", string(response[i]))
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Send final chat event
+	return websocket.JSON.Send(conn, WSEvent{
+		Type:  "event",
+		Event: "chat",
+		Payload: map[string]any{
+			"runId":      runId,
+			"sessionKey": sessionKey,
+			"state":      "final",
+			"message": map[string]any{
+				"role":      "assistant",
+				"content":   response,
+				"timestamp": time.Now().UnixMilli(),
+			},
+		},
+	})
+}
+
+// FUNC SPEC: HandleChatHistory
+//
+// PRE:
+//   - conn is a valid WebSocket connection
+//   - conn is open and ready for writing
+//   - req.Method == "chat.history"
+//
+// POST:
+//   - Sends WSResponse{OK:true, Payload:{"messages":[]}}
+//
+// INTENT:
+//   - Return empty chat history (demo mode, no persistence)
+func HandleChatHistory(conn *websocket.Conn, req WSRequest) error {
+	return websocket.JSON.Send(conn, WSResponse{
+		Type: "res",
+		ID:   req.ID,
+		OK:   true,
+		Payload: map[string]any{
+			"messages": []any{},
+		},
+	})
+}
+
+// FUNC SPEC: HandleServerCommands
+//
+// PRE:
+//   - conn is a valid WebSocket connection
+//   - conn is open and ready for writing
+//   - req.Method == "server.commands"
+//
+// POST:
+//   - Sends WSResponse{OK:true, Payload:{"commands":[]}}
+//
+// INTENT:
+//   - Return empty server commands list (demo mode)
+func HandleServerCommands(conn *websocket.Conn, req WSRequest) error {
+	return websocket.JSON.Send(conn, WSResponse{
+		Type: "res",
+		ID:   req.ID,
+		OK:   true,
+		Payload: map[string]any{
+			"commands": []any{},
+		},
+	})
+}
+
+// FUNC SPEC: HandleSessionsList
+//
+// PRE:
+//   - conn is a valid WebSocket connection
+//   - conn is open and ready for writing
+//   - req.Method == "sessions.list"
+//
+// POST:
+//   - Sends WSResponse{OK:true, Payload:{"sessions":[]}}
+//
+// INTENT:
+//   - Return empty sessions list (demo mode, no session management)
+func HandleSessionsList(conn *websocket.Conn, req WSRequest) error {
+	return websocket.JSON.Send(conn, WSResponse{
+		Type: "res",
+		ID:   req.ID,
+		OK:   true,
+		Payload: map[string]any{
+			"sessions": []any{},
+		},
+	})
+}
+
+// FUNC SPEC: HandleMessage
+//
+// PRE:
+//   - conn is a valid WebSocket connection
+//   - conn is open and ready for writing
+//   - req is a parsed WSRequest with Method field
+//
+// POST:
+//   - Case req.Method == "connect": delegates to HandleConnect
+//   - Case req.Method == "chat.send": delegates to HandleChatSend
+//   - Case req.Method == "chat.history": delegates to HandleChatHistory
+//   - Case req.Method == "server.commands": delegates to HandleServerCommands
+//   - Case req.Method == "sessions.list": delegates to HandleSessionsList
+//   - Case unknown method: sends WSResponse{OK:false, Error:{"code":"unknown_method"}}
+//
+// INTENT:
+//   - Route incoming WebSocket requests to appropriate handlers
+func HandleMessage(conn *websocket.Conn, req WSRequest) error {
+	switch req.Method {
+	case "connect":
+		return HandleConnect(conn, req)
+	case "chat.send":
+		return HandleChatSend(conn, req)
+	case "chat.history":
+		return HandleChatHistory(conn, req)
+	case "server.commands":
+		return HandleServerCommands(conn, req)
+	case "sessions.list":
+		return HandleSessionsList(conn, req)
+	default:
+		return websocket.JSON.Send(conn, WSResponse{
+			Type:  "res",
+			ID:    req.ID,
+			OK:    false,
+			Error: map[string]string{"code": "unknown_method", "message": "unknown method"},
+		})
+	}
+}

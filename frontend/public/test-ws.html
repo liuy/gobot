@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Test</h1>
+    <div id="log"></div>
+    <script>
+        function log(msg) {
+            const div = document.getElementById('log');
+            div.innerHTML += '<p>' + msg + '</p>';
+            console.log(msg);
+        }
+        
+        log('Creating WebSocket...');
+        const ws = new WebSocket('ws://127.0.0.1:18789/');
+        
+        ws.onopen = function() {
+            log('WebSocket opened!');
+        };
+        
+        ws.onmessage = function(event) {
+            log('Message: ' + event.data);
+        };
+        
+        ws.onerror = function(error) {
+            log('Error: ' + JSON.stringify(error));
+        };
+        
+        ws.onclose = function(event) {
+            log('Closed: code=' + event.code + ' reason=' + event.reason);
+        };
+    </script>
+</body>
+</html>

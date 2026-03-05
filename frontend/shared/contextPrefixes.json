@@ -1,0 +1,4 @@
+{
+  "startsWith": ["System: [", "[System Message]", "[Queued announce"],
+  "contains": ["HEARTBEAT_OK"]
+}

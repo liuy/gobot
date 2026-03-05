@@ -1,0 +1,241 @@
+@import '@fontsource/google-sans-flex/latin-400.css';
+@import '@fontsource/google-sans-flex/latin-500.css';
+@import '@fontsource/google-sans-flex/latin-600.css';
+@import '@fontsource/google-sans-flex/latin-700.css';
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.164 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.164 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.164 0 0);
+  --primary: oklch(0.164 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.96 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.955 0 0);
+  --muted-foreground: oklch(0.45 0 0);
+  --accent: oklch(0.96 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --border: oklch(0.915 0 0);
+  --input: oklch(0.915 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 0.75rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  /* Surfaces — depth through progressive gray elevation */
+  --background: oklch(0.166 0 0);       /* Level 0: #0F0F10 — base/sunken */
+  --foreground: oklch(0.911 0 0);       /* Body text: #E2E2E2 */
+  --card: oklch(0.194 0 0);             /* Level 1: #151516 — content panels */
+  --card-foreground: oklch(0.911 0 0);
+  --popover: oklch(0.224 0 0);          /* Level 2: #1C1C1E — modals/tooltips */
+  --popover-foreground: oklch(0.911 0 0);
+  --primary: oklch(0.258 0 0);          /* Level 3: #242426 — buttons/active */
+  --primary-foreground: oklch(0.911 0 0);
+  --secondary: oklch(0.194 0 0);        /* Level 1 */
+  --secondary-foreground: oklch(0.911 0 0);
+  --muted: oklch(0.194 0 0);            /* Level 1 */
+  --muted-foreground: oklch(0.632 0 0); /* Secondary text: #8A8A8E */
+  --accent: oklch(0.224 0 0);           /* Level 2 — hover states */
+  --accent-foreground: oklch(0.911 0 0);
+  --destructive: oklch(0.396 0.12 25.723);
+  --destructive-foreground: oklch(0.637 0.20 25.331);
+  --border: oklch(0.224 0 0);           /* ≈ rgba(255,255,255,0.08) on base */
+  --input: oklch(0.224 0 0);
+  --ring: oklch(0.35 0 0);
+  /* Charts — desaturated ~15% to avoid chromostereopsis */
+  --chart-1: oklch(0.488 0.205 264.376);
+  --chart-2: oklch(0.696 0.144 162.48);
+  --chart-3: oklch(0.769 0.159 70.08);
+  --chart-4: oklch(0.627 0.224 303.9);
+  --chart-5: oklch(0.645 0.209 16.439);
+  /* Sidebar — same as base layer */
+  --sidebar: oklch(0.166 0 0);
+  --sidebar-foreground: oklch(0.911 0 0);
+  --sidebar-primary: oklch(0.488 0.205 264.376);
+  --sidebar-primary-foreground: oklch(0.911 0 0);
+  --sidebar-accent: oklch(0.224 0 0);
+  --sidebar-accent-foreground: oklch(0.911 0 0);
+  --sidebar-border: oklch(0.224 0 0);
+  --sidebar-ring: oklch(0.35 0 0);
+}
+
+@theme inline {
+  --font-sans: 'Google Sans Flex', var(--font-geist-sans), 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), 'Geist Mono', ui-monospace, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@theme {
+  /* Font-size scale — boosted so text-sm = 16px body baseline */
+  --text-2xs: 0.75rem;            /* 12px */
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.875rem;            /* 14px */
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 1rem;                /* 16px — default body */
+  --text-sm--line-height: 1.5rem;
+  --text-base: 1.125rem;          /* 18px */
+  --text-base--line-height: 1.75rem;
+  --text-lg: 1.25rem;             /* 20px */
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.375rem;            /* 22px */
+  --text-xl--line-height: 1.875rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    overflow: hidden;
+    overscroll-behavior: none;
+    letter-spacing: 0.01em;
+  }
+  summary {
+    list-style: none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+}
+
+@keyframes dotFade {
+  0%, 20% { opacity: 0; }
+  40% { opacity: 1; }
+  60%, 100% { opacity: 0; }
+}
+
+@keyframes compactShrink {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.7); opacity: 0.6; }
+}
+
+@keyframes compactArrows {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.6); opacity: 0.5; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes gridSlideOpen {
+  from { grid-template-rows: 0fr; }
+  to { grid-template-rows: 1fr; }
+}
+
+@keyframes messageSend {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes lobsterWobble {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  15% { transform: translateX(-2px) rotate(-8deg); }
+  30% { transform: translateX(2px) rotate(8deg); }
+  45% { transform: translateX(-1.5px) rotate(-6deg); }
+  60% { transform: translateX(1.5px) rotate(6deg); }
+  75% { transform: translateX(-1px) rotate(-3deg); }
+  90% { transform: translateX(0.5px) rotate(2deg); }
+}
+
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+/* Hide body until React hydrates in native mode — prevents web chrome flash */
+html.native-loading body {
+  opacity: 0 !important;
+}
+
+/* Native mode — body class added by JS when ?native param is present */
+body.native {
+  background: transparent !important;
+  overflow: visible;
+  overscroll-behavior: auto;
+  /* Disable scrollbar styling — native scroll handled by WKWebView */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar { display: none; }
+  /* Remove safe-area insets — SwiftUI handles these */
+  padding: env(safe-area-inset-top, 0) 0 0 0;
+}
+body.native * {
+  /* Ensure no safe-area-inset usage leaks through */
+  --safe-area-top: 0px;
+  --safe-area-bottom: 0px;
+}

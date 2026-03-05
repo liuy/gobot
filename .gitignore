@@ -1,0 +1,5 @@
+api.md
+backend/gobot
+backend/frontend/
+backend/go.sum
+frontend/pnpm-lock.yaml
