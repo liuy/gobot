@@ -142,5 +142,5 @@ func ExtractProtocol(model string) (protocol, modelID string) {
 			return protocol, modelID
 		}
 	}
-	return "openai", clean
+	return "", clean
 }

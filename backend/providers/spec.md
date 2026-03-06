@@ -8,8 +8,9 @@
 // ├── providers/
 // │   ├── spec.md            # This file
 // │   ├── provider.go        # Interfaces, types, factory, registry
-// │   ├── openai_compat.go # HTTPProvider (shared HTTP logic)
-// │   └── zhipu.go         # Zhipu AI provider registration
+// │   ├── openai_compat.go  # HTTPProvider (shared HTTP logic)
+// │   ├── zhipu.go          # Zhipu AI provider implementation
+// │   └── minimax.go        # MiniMax provider implementation
 // ├── main.go
 // ├── protocol/
 // └── log/
@@ -23,11 +24,10 @@
 //    - Creates specific Provider based on protocol
 //    - Registry pattern for extensibility
 //
-// 2. zhipu.go - Specific Provider registers its own config
-//    - API Base
-//    - Params (temperature, top_p, max_tokens, thinking, etc.)
-//    - ExtractReasoning function (provider-specific)
-//    - Registers "zhipu" and "zhipu-coding"
+// 2. Provider implementations (zhipu.go, minimax.go, etc.)
+//    - Each file registers its own config
+//    - API Base, Params, ExtractReasoning function
+//    - Registers via RegisterProvider() in init()
 //
 // 3. openai_compat.go - Shared HTTP logic
 //    - Pass-through Params (doesn't care about specific parameters)
@@ -49,15 +49,6 @@
 //   - HTTPClient interface for testability
 //   - Structured error definitions
 //   - Streaming support via ChatStream
-
-package providers
-
-import (
-	"context"
-	"errors"
-	"net/http"
-	"time"
-)
 
 // =============================================================================
 // File: provider.go
@@ -100,22 +91,22 @@ func (d *DefaultHTTPClient) Do(req *http.Request) (*http.Response, error) {
 // Use standard lowercase/underscore naming (e.g., "reasoning_content", not "ReasoningContent").
 
 type Message struct {
-	Role              string `json:"role"`
-	Content           string `json:"content"`
-	Media             []string `json:"media,omitempty"`
-	ReasoningContent  string `json:"reasoning_content,omitempty"`
-	ToolCalls         []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID        string `json:"tool_call_id,omitempty"`
+	Role             string `json:"role"`
+	Content          string `json:"content"`
+	Media            []string `json:"media,omitempty"`
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string `json:"tool_call_id,omitempty"`
 }
 
 type LLMResponse struct {
-	Content          string `json:"content"`
-	ReasoningContent string `json:"reasoning_content,omitempty"`
-	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
-	FinishReason     string `json:"finish_reason,omitempty"`
-	Usage            *UsageInfo `json:"usage,omitempty"`
-	IsStreaming      bool `json:"-"`
-	IsDone           bool `json:"-"`
+	Content          string         `json:"content"`
+	ReasoningContent string         `json:"reasoning_content,omitempty"`
+	ToolCalls        []ToolCall     `json:"tool_calls,omitempty"`
+	FinishReason     string         `json:"finish_reason,omitempty"`
+	Usage            *UsageInfo     `json:"usage,omitempty"`
+	IsStreaming      bool           `json:"-"`
+	IsDone           bool           `json:"-"`
 	Extensions       map[string]any `json:"-"`
 }
 
@@ -155,7 +146,7 @@ type UsageInfo struct {
 
 // ModelConfig defines model configuration
 type ModelConfig struct {
-	Model   string // "zhipu/glm-5", "openai/gpt-4o"
+	Model   string // "zhipu/glm-5", "minimax/MiniMax-M2.5"
 	APIKey  string
 	APIBase string // optional override
 	Proxy   string
@@ -166,13 +157,6 @@ type ModelConfig struct {
 // ExtractReasoningFunc defines how to extract reasoning/thinking content
 // from provider-specific response. Each provider implements their own.
 type ExtractReasoningFunc func(chunk map[string]any) string
-
-// ProviderDef defines each specific Provider's config
-type ProviderDef struct {
-	APIBase          string                  // API endpoint
-	Params           map[string]any          // default params
-	ExtractReasoning ExtractReasoningFunc   // provider-specific reasoning extraction
-}
 
 // ProviderBuilder creates Provider
 type ProviderBuilder interface {
@@ -206,7 +190,6 @@ type StreamHandler func(chunk *LLMResponse) error
 // File: provider.go
 //
 // PRE:
-//   - registerZhipu() must be called before this function
 //   - cfg is not nil
 //   - cfg.Model is not empty
 //
@@ -215,12 +198,24 @@ type StreamHandler func(chunk *LLMResponse) error
 //   - Looks up builder in providerRegistry
 //   - Case builder found: calls builder.Build(cfg), returns result
 //   - Case builder NOT found: returns error "provider not registered: {protocol}"
-//   - NO fallback to OpenAI - fail fast if not registered
+//   - NO fallback - fail fast if not registered
 //
 // INTENT:
 //   - Create LLM provider using registry pattern
 func CreateProvider(cfg *ModelConfig) (LLMProvider, string, error)
 
+// FUNC SPEC: ExtractProtocol
+// File: provider.go
+//
+// PRE:
+//   - model is not empty
+//
+// POST:
+//   - Returns (protocol, modelID) if format is "protocol/modelID"
+//   - Returns ("", modelID) if no "/" separator
+//
+// INTENT:
+//   - Parse provider protocol from model string
 func ExtractProtocol(model string) (protocol, modelID string)
 
 // =============================================================================
@@ -230,11 +225,11 @@ func ExtractProtocol(model string) (protocol, modelID string)
 // --- HTTPProvider ---
 
 type HTTPProvider struct {
-	apiKey          string
-	apiBase         string
-	httpClient      HTTPClient
-	params          map[string]any          // default params
-	extractReasoning ExtractReasoningFunc // provider-specific extraction
+	apiKey           string
+	apiBase          string
+	httpClient       HTTPClient
+	params           map[string]any
+	extractReasoning ExtractReasoningFunc
 }
 
 // --- Options ---
@@ -244,11 +239,6 @@ type Option func(*HTTPProvider)
 // PARAMETER MERGING RULE:
 // When constructing API request payload, merge Provider's default `p.params` with runtime `params`.
 // Runtime `params` MUST override default `p.params` if keys overlap.
-
-// Option functions:
-// - WithHTTPClient: Inject custom HTTP client (for testing with mocks)
-// - WithParams: Set Provider default parameters
-// - WithExtractReasoning: Set reasoning extraction function
 
 func WithHTTPClient(client HTTPClient) Option
 func WithParams(params map[string]any) Option
@@ -274,111 +264,50 @@ func (p *HTTPProvider) GetDefaultModel() string
 // =============================================================================
 // File: zhipu.go
 // =============================================================================
+// SPEC: Zhipu AI Provider
+// Registers: "zhipu", "zhipu-coding"
 //
-// Zhipu AI Provider Registration
-// Registers two sub-providers: zhipu (general) and zhipu-coding (coding)
+// API Parameters:
+//   - do_sample: bool, enable sampling, default true
+//   - temperature: float, randomness, default 0.7
+//   - top_p: float, nucleus sampling, default 1.0
+//   - max_tokens: int, max tokens, default 65536 / 131072 (coding)
+//   - thinking: object, chain of thought {type: "enabled"/"disabled"}
 //
-// Zhipu API Parameters:
-// - do_sample: bool, enable sampling, default true
-// - temperature: float, randomness, default 0.7
-// - top_p: float, nucleus sampling, default 1.0
-// - max_tokens: int, max tokens, default 65536 (glm-5) / 131072 (glm-5 coding)
-// - thinking: object, chain of thought {type: "enabled"/"disabled"}, default enabled
+// Response Reasoning:
+//   - choices[0].delta.thinking (streaming)
+//   - choices[0].message.thinking (non-streaming)
 //
-// IMPORTANT: "thinking" here is a REQUEST CONTROL PARAMETER (object).
-// The response field for reasoning content is provider-specific.
+// API Base:
+//   - General: https://open.bigmodel.cn/api/paas/v4
+//   - Coding: https://open.bigmodel.cn/api/coding/paas/v4
 // =============================================================================
 
-// Zhipu Default Parameters
-var zhipuParams = map[string]any{
-	"do_sample":   true,
-	"temperature": 0.7,
-	"top_p":       1.0,
-	"max_tokens":  65536,
-	"thinking":    map[string]string{"type": "enabled"},
-}
+// Register zhipu providers
+func registerZhipu()
 
-var zhipuCodingParams = map[string]any{
-	"do_sample":   true,
-	"temperature": 0.7,
-	"top_p":       1.0,
-	"max_tokens":  131072,
-	"thinking":    map[string]string{"type": "enabled"},
-}
+// =============================================================================
+// File: minimax.go
+// =============================================================================
+// SPEC: MiniMax Provider
+// Registers: "minimax"
+//
+// API Parameters:
+//   - temperature: float, randomness, range (0.0, 1.0], default 0.2
+//   - top_p: float, nucleus sampling, default 0.1
+//   - max_tokens: int, max tokens, default 16384
+//   - reasoning_split: bool, separate thinking to reasoning_details, default true
+//
+// Response Reasoning:
+//   - choices[0].delta.reasoning_details[0].text (streaming)
+//   - choices[0].message.reasoning_details[0].text (non-streaming)
+//
+// API Base:
+//   - https://api.minimaxi.com/v1
+// =============================================================================
 
-// Zhipu Reasoning Extraction
-// Based on actual Zhipu API response format
-// Response reasoning appears in: choices[0].delta.thinking (stream)
-// or choices[0].message.thinking (non-stream)
-func zhipuExtractReasoning(chunk map[string]any) string {
-	// Try to extract from choices array
-	choices, ok := chunk["choices"].([]any)
-	if !ok || len(choices) == 0 {
-		return ""
-	}
-
-	choice, ok := choices[0].(map[string]any)
-	if !ok {
-		return ""
-	}
-
-	// Check delta (streaming) first
-	if delta, ok := choice["delta"].(map[string]any); ok {
-		if thinking, ok := delta["thinking"].(string); ok && thinking != "" {
-			return thinking
-		}
-	}
-
-	// Check message (non-streaming)
-	if msg, ok := choice["message"].(map[string]any); ok {
-		if thinking, ok := msg["thinking"].(string); ok && thinking != "" {
-			return thinking
-		}
-	}
-
-	return ""
-}
-
-// Register Zhipu providers
-// IMPORTANT: Must be called before CreateProvider
-// Call in main.go or use registerAll() helper
-func registerZhipu() {
-	// zhipu general API
-	RegisterProvider("zhipu", &zhipuBuilder{
-		apiBase:          "https://open.bigmodel.cn/api/paas/v4",
-		params:           zhipuParams,
-		extractReasoning: zhipuExtractReasoning,
-	})
-
-	// zhipu-coding coding API
-	RegisterProvider("zhipu-coding", &zhipuBuilder{
-		apiBase:          "https://open.bigmodel.cn/api/coding/paas/v4",
-		params:           zhipuCodingParams,
-		extractReasoning: zhipuExtractReasoning,
-	})
-}
-
-type zhipuBuilder struct {
-	apiBase          string
-	params           map[string]any
-	extractReasoning ExtractReasoningFunc
-}
-
-func (b *zhipuBuilder) Build(cfg *ModelConfig) (LLMProvider, string, error) {
-	apiBase := cfg.APIBase
-	if apiBase == "" {
-		apiBase = b.apiBase
-	}
-
-	p := NewProvider(
-		cfg.APIKey,
-		apiBase,
-		cfg.Proxy,
-		WithParams(b.params),
-		WithExtractReasoning(b.extractReasoning),
-	)
-	return p, "", nil
-}
+// Register minimax provider
+func registerMinimax()
 
 // =============================================================================
 // Design Notes
@@ -388,7 +317,7 @@ func (b *zhipuBuilder) Build(cfg *ModelConfig) (LLMProvider, string, error) {
 //    Each provider has different parameters. Let them manage via Params.
 //    HTTP layer just passes through.
 //
-// 2. Why ExtractReasoning in ProviderDef?
+// 2. Why ExtractReasoning in ProviderBuilder?
 //    Different providers return reasoning in different fields/paths.
 //    Provider knows their own response format best.
 //
@@ -397,7 +326,7 @@ func (b *zhipuBuilder) Build(cfg *ModelConfig) (LLMProvider, string, error) {
 //    - Define Params (provider defaults)
 //    - Implement ExtractReasoningFunc
 //    - Register in init()
-//    - No changes needed to openai_compat.go
+//    - Add spec to spec.md (interface only, not implementation)
 
 // =============================================================================
 // TEST SPEC
@@ -405,4 +334,4 @@ func (b *zhipuBuilder) Build(cfg *ModelConfig) (LLMProvider, string, error) {
 //
 // - Implement Table-Driven Tests for CreateProvider logic.
 // - Use Mock HTTPClient to test openai_compat.go without actual network calls.
-// - Provide at least one test for zhipuExtractReasoning with mock JSON response.
+// - Provide at least one test for ExtractReasoning with mock JSON response.

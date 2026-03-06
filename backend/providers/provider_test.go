@@ -62,8 +62,8 @@ func TestExtractProtocol(t *testing.T) {
 	}{
 		{"zhipu prefixed", "zhipu/glm-4-flash", "zhipu", "glm-4-flash"},
 		{"zhipu-coding prefixed", "zhipu-coding/glm-5", "zhipu-coding", "glm-5"},
-		{"openai prefixed", "openai/gpt-4o", "openai", "gpt-4o"},
-		{"default protocol", "gpt-4o", "openai", "gpt-4o"},
+		{"minimax prefixed", "minimax/MiniMax-M2.5", "minimax", "MiniMax-M2.5"},
+		{"no prefix returns empty", "gpt-4o", "", "gpt-4o"},
 		{"trim whitespace", "  zhipu/glm-4-flash  ", "zhipu", "glm-4-flash"},
 	}
 	for _, tt := range tests {
