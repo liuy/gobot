@@ -3,3 +3,5 @@ backend/gobot
 backend/frontend/
 backend/go.sum
 frontend/pnpm-lock.yaml
+plan.md
+frontend/next-env.d.ts

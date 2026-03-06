@@ -16,14 +16,22 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"os"
+	"strings"
 
 	"gobot/log"
 	"gobot/protocol"
+	"gobot/providers"
 	"golang.org/x/net/websocket"
 )
 
 //go:embed frontend
 var staticFiles embed.FS
+
+var (
+	llmProvider providers.LLMProvider
+	llmModel    string
+)
 
 const (
 	DefaultPort = ":10086"
@@ -39,6 +47,30 @@ const (
 //
 // INTENT:
 func main() {
+	model := strings.TrimSpace(os.Getenv("LLM_MODEL"))
+	apiKey := strings.TrimSpace(os.Getenv("LLM_API_KEY"))
+	if model == "" {
+		log.Fatal("LLM_MODEL is required")
+	}
+	if apiKey == "" {
+		log.Fatal("LLM_API_KEY is required")
+	}
+	cfg := &providers.ModelConfig{
+		Model:   model,
+		APIKey:  apiKey,
+		APIBase: strings.TrimSpace(os.Getenv("LLM_API_BASE")),
+	}
+	if protocolName, _ := providers.ExtractProtocol(model); protocolName == "openai" && cfg.APIBase == "" {
+		cfg.APIBase = "https://api.openai.com/v1"
+	}
+	var err error
+	llmProvider, llmModel, err = providers.CreateProvider(cfg)
+	if err != nil {
+		log.Fatal("CreateProvider failed: %v", err)
+	}
+	protocol.ChatProvider = llmProvider
+	protocol.ChatModel = llmModel
+
 	// WebSocket endpoint
 	http.Handle("/ws", websocket.Handler(handleWebSocket))
 

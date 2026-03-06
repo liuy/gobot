@@ -37,3 +37,4 @@ ios/MobileClaw/Resources/web/
 worktrees
 
 pnpm-lock.yaml
+next-env.d.ts

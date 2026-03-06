@@ -1,13 +1,27 @@
 package protocol
 
 import (
+	"context"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"gobot/providers"
 	"golang.org/x/net/websocket"
 )
+
+type stubChatProvider struct{}
+
+func (s *stubChatProvider) Chat(context.Context, []providers.Message, string, providers.ChatOptions) (*providers.LLMResponse, error) {
+	return &providers.LLMResponse{ReasoningContent: "thinking", Content: "ok"}, nil
+}
+
+func (s *stubChatProvider) ChatStream(context.Context, []providers.Message, string, providers.ChatOptions, providers.StreamHandler) error {
+	return nil
+}
+
+func (s *stubChatProvider) GetDefaultModel() string { return "" }
 
 func newWSConn(t *testing.T, fn func(*websocket.Conn)) *websocket.Conn {
 	t.Helper()
@@ -106,6 +120,14 @@ func TestHandleConnect_InvalidToken_POST(t *testing.T) {
 }
 
 func TestHandleChatSend_POST(t *testing.T) {
+	origProvider, origModel := ChatProvider, ChatModel
+	ChatProvider = &stubChatProvider{}
+	ChatModel = "gpt-4o"
+	t.Cleanup(func() {
+		ChatProvider = origProvider
+		ChatModel = origModel
+	})
+
 	conn := newWSConn(t, func(ws *websocket.Conn) {
 		// Use params.message and params.sessionKey format
 		req := WSRequest{Type: "req", ID: "3", Method: "chat.send", Params: map[string]any{"message": "hello", "sessionKey": "main"}}

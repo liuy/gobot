@@ -14,10 +14,12 @@ package protocol
 //   - Dispatches incoming messages to appropriate handlers
 
 import (
+	"context"
 	"fmt"
+	"strings"
 	"time"
 
-	"gobot/log"
+	"gobot/providers"
 	"golang.org/x/net/websocket"
 )
 
@@ -64,7 +66,7 @@ type Features struct {
 
 type Auth struct {
 	DeviceToken *string  `json:"deviceToken,omitempty"`
-	Role        *string `json:"role,omitempty"`
+	Role        *string  `json:"role,omitempty"`
 	Scopes      []string `json:"scopes,omitempty"`
 	IssuedAtMs  *int64   `json:"issuedAtMs,omitempty"`
 }
@@ -84,9 +86,9 @@ type ChatEventPayload struct {
 }
 
 type ChatMessage struct {
-	Role      string      `json:"role"`
-	Content   any `json:"content"`
-	Timestamp int64       `json:"timestamp"`
+	Role      string `json:"role"`
+	Content   any    `json:"content"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 // Constants
@@ -94,6 +96,11 @@ type ChatMessage struct {
 const (
 	ProtocolVersion = 3
 	ValidToken      = "123456"
+)
+
+var (
+	ChatProvider providers.LLMProvider
+	ChatModel    string
 )
 
 // FUNC SPEC: SendConnectChallenge
@@ -174,66 +181,122 @@ func HandleConnect(conn *websocket.Conn, req WSRequest) error {
 //   - Returns error if any send fails
 //
 // INTENT:
-//   - Simulate AI response with streaming reasoning and content for demo purposes
+//   - Run LLM chat via configured provider and stream reasoning/content to client
 func HandleChatSend(conn *websocket.Conn, req WSRequest) error {
 	content, _ := req.Params["message"].(string)
 	sessionKey, _ := req.Params["sessionKey"].(string)
 	runId := req.ID
+	if ChatProvider == nil {
+		return fmt.Errorf("chat provider not configured")
+	}
+	if strings.TrimSpace(ChatModel) == "" {
+		return fmt.Errorf("chat model not configured")
+	}
 
-	// Helper to send agent event
 	sendAgent := func(stream string, delta string) error {
 		return websocket.JSON.Send(conn, WSEvent{
 			Type:  "event",
 			Event: "agent",
 			Payload: map[string]any{
-				"runId":       runId,
-				"sessionKey":  sessionKey,
-				"stream":      stream,
-				"data":        map[string]string{"delta": delta},
-				"ts":          time.Now().UnixMilli(),
+				"runId":      runId,
+				"sessionKey": sessionKey,
+				"stream":     stream,
+				"data":       map[string]string{"delta": delta},
+				"ts":         time.Now().UnixMilli(),
 			},
 		})
 	}
 
-	// Send reasoning block start to trigger "Thinking..." animation
-	_ = websocket.JSON.Send(conn, WSEvent{
-		Type:  "event",
-		Event: "agent",
-		Payload: map[string]any{
-			"runId":      runId,
-			"sessionKey": sessionKey,
-			"stream":     "reasoning",
-			"data":       map[string]any{"newBlock": true},
-			"ts":         time.Now().UnixMilli(),
-		},
-	})
-	time.Sleep(300 * time.Millisecond)
-
-	// Simulate thinking with streaming
-	thinkingText := "I am an echo server built with Go and WebSocket.\nI will echo back your message with a prefix.\n"
-	for i := 0; i < len(thinkingText); i++ {
-		err := sendAgent("reasoning", string(thinkingText[i]))
-		if err != nil {
-			log.Error("sendAgent reasoning: %v", err)
-			break
+	messages := make([]providers.Message, 0, 8)
+	if rawMessages, ok := req.Params["messages"].([]any); ok {
+		for _, raw := range rawMessages {
+			m, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			role, _ := m["role"].(string)
+			msgContent, _ := m["content"].(string)
+			if role == "" || msgContent == "" {
+				continue
+			}
+			messages = append(messages, providers.Message{
+				Role:    role,
+				Content: msgContent,
+			})
 		}
-		log.Debug("sent reasoning delta: %s", string(thinkingText[i]))
-		time.Sleep(30 * time.Millisecond)
+	}
+	if content != "" {
+		messages = append(messages, providers.Message{
+			Role:    "user",
+			Content: content,
+		})
+	}
+	if len(messages) == 0 {
+		return fmt.Errorf("chat.send missing message")
 	}
 
-	// Simulate streaming content
-	response := "Echo: " + content
-	for i := 0; i < len(response); i++ {
-		err := sendAgent("content", string(response[i]))
-		if err != nil {
-			log.Error("sendAgent content: %v", err)
-			break
-		}
-		log.Debug("sent content delta: %s", string(response[i]))
-		time.Sleep(50 * time.Millisecond)
+	// Use streaming to get real-time thinking and content
+	var finalContent string
+	var finalReasoning string
+	var err error
+
+	err = ChatProvider.ChatStream(context.Background(), messages, ChatModel, providers.DefaultChatOptions(),
+		func(chunk *providers.LLMResponse) error {
+			// Handle reasoning/thinking stream
+			if chunk.ReasoningContent != "" {
+				// First chunk - send newBlock event
+				if finalReasoning == "" {
+					if err := websocket.JSON.Send(conn, WSEvent{
+						Type:  "event",
+						Event: "agent",
+						Payload: map[string]any{
+							"runId":      runId,
+							"sessionKey": sessionKey,
+							"stream":     "reasoning",
+							"data":       map[string]any{"newBlock": true},
+							"ts":         time.Now().UnixMilli(),
+						},
+					}); err != nil {
+						return err
+					}
+				}
+				finalReasoning += chunk.ReasoningContent
+				if err := sendAgent("reasoning", chunk.ReasoningContent); err != nil {
+					return err
+				}
+			}
+
+			// Handle content stream
+			if chunk.Content != "" {
+				// First chunk - send newBlock event
+				if finalContent == "" {
+					if err := websocket.JSON.Send(conn, WSEvent{
+						Type:  "event",
+						Event: "agent",
+						Payload: map[string]any{
+							"runId":      runId,
+							"sessionKey": sessionKey,
+							"stream":     "content",
+							"data":       map[string]any{"newBlock": true},
+							"ts":         time.Now().UnixMilli(),
+						},
+					}); err != nil {
+						return err
+					}
+				}
+				finalContent += chunk.Content
+				if err := sendAgent("content", chunk.Content); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
+
+	if err != nil {
+		return err
 	}
 
-	// Send final chat event
 	return websocket.JSON.Send(conn, WSEvent{
 		Type:  "event",
 		Event: "chat",
@@ -243,7 +306,7 @@ func HandleChatSend(conn *websocket.Conn, req WSRequest) error {
 			"state":      "final",
 			"message": map[string]any{
 				"role":      "assistant",
-				"content":   response,
+				"content":   finalContent,
 				"timestamp": time.Now().UnixMilli(),
 			},
 		},
