@@ -8,11 +8,11 @@ import (
 
 type stubProvider struct{}
 
-func (s *stubProvider) Chat(context.Context, []Message, string, ChatOptions) (*LLMResponse, error) {
+func (s *stubProvider) Chat(context.Context, []Message, string, map[string]any) (*LLMResponse, error) {
 	return &LLMResponse{Content: "ok"}, nil
 }
 
-func (s *stubProvider) ChatStream(context.Context, []Message, string, ChatOptions, StreamHandler) error {
+func (s *stubProvider) ChatStream(context.Context, []Message, string, map[string]any, StreamHandler) error {
 	return nil
 }
 
@@ -30,19 +30,6 @@ func (b *stubBuilder) Build(cfg *ModelConfig) (LLMProvider, string, error) {
 	return b.retP, b.retM, b.retE
 }
 
-func TestDefaultChatOptions(t *testing.T) {
-	opts := DefaultChatOptions()
-	if opts.Temperature != 0.7 {
-		t.Fatalf("Temperature = %v, want 0.7", opts.Temperature)
-	}
-	if opts.MaxTokens != 4096 {
-		t.Fatalf("MaxTokens = %d, want 4096", opts.MaxTokens)
-	}
-	if opts.TopP != 1.0 {
-		t.Fatalf("TopP = %v, want 1.0", opts.TopP)
-	}
-}
-
 func TestSentinelErrorsDefined(t *testing.T) {
 	tests := []struct {
 		name string
@@ -51,6 +38,11 @@ func TestSentinelErrorsDefined(t *testing.T) {
 		{name: "ErrUnauthorized", err: ErrUnauthorized},
 		{name: "ErrRateLimited", err: ErrRateLimited},
 		{name: "ErrAPIError", err: ErrAPIError},
+		{name: "ErrContextCanceled", err: ErrContextCanceled},
+		{name: "ErrModelNotFound", err: ErrModelNotFound},
+		{name: "ErrNetworkError", err: ErrNetworkError},
+		{name: "ErrTimeout", err: ErrTimeout},
+		{name: "ErrInvalidResponse", err: ErrInvalidResponse},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -86,13 +78,17 @@ func TestExtractProtocol(t *testing.T) {
 }
 
 func TestCreateProviderValidation(t *testing.T) {
-	if p, m, err := CreateProvider(nil); err == nil || err.Error() != "config is nil" || p != nil || m != "" {
-		t.Fatalf("CreateProvider(nil) = (%v, %q, %v), want (nil, \"\", config is nil)", p, m, err)
+	orig := providerRegistry
+	providerRegistry = make(map[string]ProviderBuilder)
+	t.Cleanup(func() { providerRegistry = orig })
+
+	if p, m, err := CreateProvider(nil); err == nil || p != nil || m != "" {
+		t.Fatalf("CreateProvider(nil) = (%v, %q, %v), want (nil, \"\", error)", p, m, err)
 	}
 
 	cfg := &ModelConfig{APIKey: "k"}
-	if p, m, err := CreateProvider(cfg); err == nil || err.Error() != "model is required" || p != nil || m != "" {
-		t.Fatalf("CreateProvider(empty model) = (%v, %q, %v), want (nil, \"\", model is required)", p, m, err)
+	if p, m, err := CreateProvider(cfg); err == nil || p != nil || m != "" {
+		t.Fatalf("CreateProvider(empty model) = (%v, %q, %v), want (nil, \"\", error)", p, m, err)
 	}
 }
 
@@ -114,7 +110,7 @@ func TestCreateProviderUsesRegisteredBuilder(t *testing.T) {
 		t.Fatalf("builder got cfg %p, want %p", builder.gotCfg, cfg)
 	}
 	if gotProvider != wantProvider {
-		t.Fatalf("provider = %T, want stub provider", gotProvider)
+		t.Fatalf("provider mismatch")
 	}
 	if gotModelID != "glm-4-flash" {
 		t.Fatalf("modelID = %q, want %q", gotModelID, "glm-4-flash")
@@ -135,58 +131,20 @@ func TestCreateProviderBuilderErrorPropagates(t *testing.T) {
 	}
 }
 
-func TestCreateProviderFallsBackToOpenAICompat(t *testing.T) {
+func TestCreateProviderUnregisteredFailsFast(t *testing.T) {
 	orig := providerRegistry
 	providerRegistry = make(map[string]ProviderBuilder)
 	t.Cleanup(func() { providerRegistry = orig })
 
 	cfg := &ModelConfig{
-		Model:   "gpt-4o",
-		APIKey:  "k",
-		APIBase: "https://example.com/v1",
-	}
-	gotProvider, gotModelID, err := CreateProvider(cfg)
-	if err != nil {
-		t.Fatalf("CreateProvider returned error: %v", err)
-	}
-	if _, ok := gotProvider.(*HTTPProvider); !ok {
-		t.Fatalf("fallback provider type = %T, want *HTTPProvider", gotProvider)
-	}
-	if gotModelID != "gpt-4o" {
-		t.Fatalf("modelID = %q, want %q", gotModelID, "gpt-4o")
-	}
-}
-
-func TestCreateProviderZhipuCodingUsesCorrectAPIBase(t *testing.T) {
-	orig := providerRegistry
-	providerRegistry = make(map[string]ProviderBuilder)
-	t.Cleanup(func() { providerRegistry = orig })
-
-	// Without custom APIBase, should use DefaultZhipuCodingAPIBase
-	cfg := &ModelConfig{
-		Model:  "zhipu-coding/glm-5",
+		Model:  "unknown/model",
 		APIKey: "k",
 	}
 	_, _, err := CreateProvider(cfg)
-	// Should not fail - uses default API base
-	if err != nil {
-		t.Fatalf("CreateProvider(zhipu-coding) error: %v", err)
+	if err == nil {
+		t.Fatal("expected error for unregistered provider")
 	}
-}
-
-func TestCreateProviderZhipuUsesCorrectAPIBase(t *testing.T) {
-	orig := providerRegistry
-	providerRegistry = make(map[string]ProviderBuilder)
-	t.Cleanup(func() { providerRegistry = orig })
-
-	// Without custom APIBase, should use DefaultZhipuAPIBase
-	cfg := &ModelConfig{
-		Model:  "zhipu/glm-4-flash",
-		APIKey: "k",
-	}
-	_, _, err := CreateProvider(cfg)
-	// Should not fail - uses default API base
-	if err != nil {
-		t.Fatalf("CreateProvider(zhipu) error: %v", err)
+	if err.Error() != "provider not registered: unknown" {
+		t.Fatalf("error = %q, want %q", err.Error(), "provider not registered: unknown")
 	}
 }

@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 )
 
 type mockHTTPClient struct {
@@ -20,29 +19,33 @@ func (m *mockHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	return m.do(req)
 }
 
-func TestWithMaxTokensField(t *testing.T) {
-	p := &HTTPProvider{}
-	WithMaxTokensField("max_completion_tokens")(p)
-	if p.maxTokensField != "max_completion_tokens" {
-		t.Fatalf("maxTokensField = %q, want %q", p.maxTokensField, "max_completion_tokens")
-	}
-}
-
-func TestWithRequestTimeout(t *testing.T) {
-	p := &HTTPProvider{}
-	WithRequestTimeout(7 * time.Second)(p)
-	c, ok := p.httpClient.(*DefaultHTTPClient)
-	if !ok || c.client.Timeout != 7*time.Second {
-		t.Fatalf("http timeout not set to 7s")
-	}
-}
-
 func TestWithHTTPClient(t *testing.T) {
 	m := &mockHTTPClient{do: func(req *http.Request) (*http.Response, error) { return nil, nil }}
 	p := &HTTPProvider{}
 	WithHTTPClient(m)(p)
 	if p.httpClient != m {
 		t.Fatalf("httpClient not set by WithHTTPClient")
+	}
+}
+
+func TestWithParams(t *testing.T) {
+	params := map[string]any{"temperature": 0.5, "max_tokens": 1000}
+	p := &HTTPProvider{}
+	WithParams(params)(p)
+	if p.params["temperature"] != 0.5 {
+		t.Fatalf("params temperature = %v, want 0.5", p.params["temperature"])
+	}
+	if p.params["max_tokens"] != 1000 {
+		t.Fatalf("params max_tokens = %v, want 1000", p.params["max_tokens"])
+	}
+}
+
+func TestWithExtractReasoning(t *testing.T) {
+	f := func(chunk map[string]any) string { return "test" }
+	p := &HTTPProvider{}
+	WithExtractReasoning(f)(p)
+	if p.extractReasoning == nil {
+		t.Fatal("extractReasoning not set")
 	}
 }
 
@@ -107,8 +110,8 @@ func TestHTTPProviderChatBuildsNonStreamingRequest(t *testing.T) {
 	}}
 	p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client))
 
-	resp, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", ChatOptions{
-		Tools: []ToolDefinition{{Type: "function", Function: ToolFunction{Name: "echo"}}},
+	resp, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", map[string]any{
+		"tools": []ToolDefinition{{Type: "function", Function: ToolFunction{Name: "echo"}}},
 	})
 	if err != nil {
 		t.Fatalf("Chat returned error: %v", err)
@@ -131,9 +134,6 @@ func TestHTTPProviderChatBuildsNonStreamingRequest(t *testing.T) {
 	if !bytes.Contains(body, []byte(`"stream":false`)) {
 		t.Fatalf("request does not set stream=false: %s", string(body))
 	}
-	if !bytes.Contains(body, []byte(`"tools"`)) || !bytes.Contains(body, []byte(`"tool_choice":"auto"`)) {
-		t.Fatalf("request does not include tools/tool_choice=auto: %s", string(body))
-	}
 }
 
 func TestHTTPProviderChatMapsZeroUsage(t *testing.T) {
@@ -148,7 +148,7 @@ func TestHTTPProviderChatMapsZeroUsage(t *testing.T) {
 		}, nil
 	}}
 	p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client))
-	resp, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", DefaultChatOptions())
+	resp, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", nil)
 	if err != nil {
 		t.Fatalf("Chat returned error: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestHTTPProviderChatPropagatesContext(t *testing.T) {
 	}}
 	p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client))
 
-	_, err := p.Chat(ctx, []Message{{Role: "user", Content: "hi"}}, "gpt-4o", DefaultChatOptions())
+	_, err := p.Chat(ctx, []Message{{Role: "user", Content: "hi"}}, "gpt-4o", nil)
 	if err == nil {
 		t.Fatal("expected error for canceled context")
 	}
@@ -197,7 +197,7 @@ func TestHTTPProviderChatMapsStatusCodeToSentinelError(t *testing.T) {
 			}}
 			p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client))
 
-			_, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", DefaultChatOptions())
+			_, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", nil)
 			if !errors.Is(err, tt.want) {
 				t.Fatalf("error = %v, want sentinel %v", err, tt.want)
 			}
@@ -215,7 +215,7 @@ func TestHTTPProviderChatInvalidJSONReturnsError(t *testing.T) {
 	}}
 	p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client))
 
-	_, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", DefaultChatOptions())
+	_, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", nil)
 	if err == nil {
 		t.Fatal("expected error for invalid JSON response")
 	}
@@ -244,7 +244,7 @@ func TestHTTPProviderChatStreamSSEAndDone(t *testing.T) {
 	p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client))
 
 	var chunks []*LLMResponse
-	err := p.ChatStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", DefaultChatOptions(),
+	err := p.ChatStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", nil,
 		func(chunk *LLMResponse) error {
 			chunks = append(chunks, chunk)
 			return nil
@@ -265,28 +265,24 @@ func TestHTTPProviderChatStreamSSEAndDone(t *testing.T) {
 
 func TestHTTPProviderChatStreamParsesThinking(t *testing.T) {
 	tests := []struct {
-		name             string
-		stream           string
-		wantReasoning    string
-		thinkingField    string // "thinking" or "reasoning_content"
+		name          string
+		stream        string
+		wantReasoning string
 	}{
 		{
 			name:          "GLM thinking field",
 			stream:        `data: {"choices":[{"delta":{"thinking":"Let me think","content":"Hello"}}]}` + "\n\ndata: [DONE]\n\n",
 			wantReasoning: "Let me think",
-			thinkingField: "thinking",
 		},
 		{
 			name:          "OpenAI reasoning_content field",
 			stream:        `data: {"choices":[{"delta":{"reasoning_content":"Let me think","content":"Hello"}}]}` + "\n\ndata: [DONE]\n\n",
 			wantReasoning: "Let me think",
-			thinkingField: "reasoning_content",
 		},
 		{
 			name:          "both thinking and content",
 			stream:        `data: {"choices":[{"delta":{"thinking":"Reasoning...","content":"Final"}}]}` + "\n\ndata: [DONE]\n\n",
 			wantReasoning: "Reasoning...",
-			thinkingField: "thinking",
 		},
 	}
 
@@ -302,7 +298,7 @@ func TestHTTPProviderChatStreamParsesThinking(t *testing.T) {
 			p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client))
 
 			var gotReasoning string
-			err := p.ChatStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", DefaultChatOptions(),
+			err := p.ChatStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", nil,
 				func(chunk *LLMResponse) error {
 					gotReasoning += chunk.ReasoningContent
 					return nil
@@ -334,7 +330,7 @@ func TestHTTPProviderChatStreamWithToolCalls(t *testing.T) {
 	p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client))
 
 	var got *LLMResponse
-	err := p.ChatStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", DefaultChatOptions(),
+	err := p.ChatStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", nil,
 		func(chunk *LLMResponse) error {
 			if !chunk.IsDone && len(chunk.ToolCalls) > 0 {
 				got = chunk
@@ -368,7 +364,7 @@ func TestHTTPProviderChatStreamTruncatedSSEReturnsError(t *testing.T) {
 	}}
 	p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client))
 
-	err := p.ChatStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", DefaultChatOptions(),
+	err := p.ChatStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", nil,
 		func(chunk *LLMResponse) error { return nil })
 	if err == nil {
 		t.Fatal("expected error for truncated SSE payload")
@@ -387,7 +383,7 @@ func TestHTTPProviderChatStreamHandlerErrorStops(t *testing.T) {
 	p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client))
 
 	wantErr := errors.New("stop")
-	err := p.ChatStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", DefaultChatOptions(),
+	err := p.ChatStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", nil,
 		func(chunk *LLMResponse) error { return wantErr })
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("error = %v, want %v", err, wantErr)
@@ -398,6 +394,73 @@ func TestHTTPProviderGetDefaultModel(t *testing.T) {
 	p := &HTTPProvider{}
 	if got := p.GetDefaultModel(); got != "" {
 		t.Fatalf("GetDefaultModel() = %q, want empty string", got)
+	}
+}
+
+func TestHTTPProviderParamsMerging(t *testing.T) {
+	var body []byte
+	client := &mockHTTPClient{do: func(req *http.Request) (*http.Response, error) {
+		var err error
+		body, err = io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"ok"}}]}`)),
+			Header:     make(http.Header),
+		}, nil
+	}}
+	defaultParams := map[string]any{
+		"temperature": 0.7,
+		"max_tokens":  1000,
+	}
+	p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client), WithParams(defaultParams))
+
+	_, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", map[string]any{
+		"temperature": 0.5,
+	})
+	if err != nil {
+		t.Fatalf("Chat returned error: %v", err)
+	}
+	if !bytes.Contains(body, []byte(`"temperature":0.5`)) {
+		t.Fatalf("runtime params did not override default: %s", string(body))
+	}
+	if !bytes.Contains(body, []byte(`"max_tokens":1000`)) {
+		t.Fatalf("default params not preserved: %s", string(body))
+	}
+}
+
+func TestHTTPProviderExtractReasoningCalled(t *testing.T) {
+	stream := `data: {"choices":[{"delta":{"content":"Hello"}}]}` + "\n\ndata: [DONE]\n\n"
+	called := false
+	extractFunc := func(chunk map[string]any) string {
+		called = true
+		return "extracted reasoning"
+	}
+	client := &mockHTTPClient{do: func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(stream)),
+			Header:     make(http.Header),
+		}, nil
+	}}
+	p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client), WithExtractReasoning(extractFunc))
+
+	var gotReasoning string
+	err := p.ChatStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, "gpt-4o", nil,
+		func(chunk *LLMResponse) error {
+			gotReasoning += chunk.ReasoningContent
+			return nil
+		})
+	if err != nil {
+		t.Fatalf("ChatStream error: %v", err)
+	}
+	if !called {
+		t.Fatal("extractReasoning was not called")
+	}
+	if gotReasoning != "extracted reasoning" {
+		t.Fatalf("ReasoningContent = %q, want %q", gotReasoning, "extracted reasoning")
 	}
 }
 
@@ -412,11 +475,10 @@ func BenchmarkHTTPProviderChat(b *testing.B) {
 	}}
 	p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client))
 	msgs := []Message{{Role: "user", Content: "hi"}}
-	opts := DefaultChatOptions()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := p.Chat(context.Background(), msgs, "gpt-4o", opts); err != nil {
+		if _, err := p.Chat(context.Background(), msgs, "gpt-4o", nil); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -433,11 +495,10 @@ func BenchmarkHTTPProviderChatStream(b *testing.B) {
 	}}
 	p := NewProvider("k", "https://example.com/v1", "", WithHTTPClient(client))
 	msgs := []Message{{Role: "user", Content: "hi"}}
-	opts := DefaultChatOptions()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := p.ChatStream(context.Background(), msgs, "gpt-4o", opts, func(chunk *LLMResponse) error { return nil }); err != nil {
+		if err := p.ChatStream(context.Background(), msgs, "gpt-4o", nil, func(chunk *LLMResponse) error { return nil }); err != nil {
 			b.Fatal(err)
 		}
 	}

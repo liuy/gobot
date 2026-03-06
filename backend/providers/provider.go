@@ -32,93 +32,70 @@ func (d *DefaultHTTPClient) Do(req *http.Request) (*http.Response, error) {
 }
 
 type Message struct {
-	Role             string         `json:"role"`
-	Content          string         `json:"content,omitempty"`
-	Media            []string       `json:"media,omitempty"`
-	ReasoningContent string         `json:"reasoning_content,omitempty"`
-	ToolCalls        []ToolCall     `json:"tool_calls,omitempty"`
-	ToolCallID       string         `json:"tool_call_id,omitempty"`
-	Extensions       map[string]any `json:"-"`
+	Role             string     `json:"role"`
+	Content          string     `json:"content"`
+	Media            []string   `json:"media,omitempty"`
+	ReasoningContent string     `json:"reasoning_content,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string     `json:"tool_call_id,omitempty"`
 }
 
 type LLMResponse struct {
-	Content          string         `json:"content,omitempty"`
+	Content          string         `json:"content"`
 	ReasoningContent string         `json:"reasoning_content,omitempty"`
 	ToolCalls        []ToolCall     `json:"tool_calls,omitempty"`
 	FinishReason     string         `json:"finish_reason,omitempty"`
 	Usage            *UsageInfo     `json:"usage,omitempty"`
-	IsStreaming      bool           `json:"is_streaming,omitempty"`
-	IsDone           bool           `json:"is_done,omitempty"`
-	Extensions       map[string]any `json:"extensions,omitempty"`
+	IsStreaming      bool           `json:"-"`
+	IsDone           bool           `json:"-"`
+	Extensions       map[string]any `json:"-"`
 }
 
 type ToolCall struct {
-	ID         string         `json:"id,omitempty"`
-	Type       string         `json:"type,omitempty"`
-	Function   *FunctionCall  `json:"function,omitempty"`
-	Name       string         `json:"name,omitempty"`
-	Arguments  map[string]any `json:"arguments,omitempty"`
-	Extensions map[string]any `json:"extensions,omitempty"`
+	ID         string
+	Type       string
+	Function   *FunctionCall
+	Name       string
+	Arguments  map[string]any
+	Extensions map[string]any
 }
 
 type FunctionCall struct {
-	Name             string `json:"name,omitempty"`
-	Arguments        string `json:"arguments,omitempty"`
-	ThoughtSignature string `json:"thought_signature,omitempty"`
+	Name             string
+	Arguments        string
+	ThoughtSignature string
 }
 
 type ToolDefinition struct {
-	Type     string       `json:"type,omitempty"`
-	Function ToolFunction `json:"function"`
+	Type     string
+	Function ToolFunction
 }
 
 type ToolFunction struct {
-	Name        string         `json:"name,omitempty"`
-	Description string         `json:"description,omitempty"`
-	Parameters  map[string]any `json:"parameters,omitempty"`
+	Name        string
+	Description string
+	Parameters  map[string]any
 }
 
 type UsageInfo struct {
-	PromptTokens     int `json:"prompt_tokens,omitempty"`
-	CompletionTokens int `json:"completion_tokens,omitempty"`
-	TotalTokens      int `json:"total_tokens,omitempty"`
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
 }
 
 type ModelConfig struct {
-	Model    string
-	APIKey   string
-	APIBase  string
-	Proxy    string
-	Protocol string
+	Model   string
+	APIKey  string
+	APIBase string
+	Proxy   string
 }
 
-type ChatOptions struct {
-	Temperature float64
-	MaxTokens   int
-	TopP        float64
-	Tools       []ToolDefinition
-	Thinking    *bool
-}
+type ExtractReasoningFunc func(chunk map[string]any) string
 
-func DefaultChatOptions() ChatOptions {
-	return ChatOptions{
-		Temperature: 0.7,
-		MaxTokens:   4096,
-		TopP:        1.0,
-	}
-}
-
-type LLMProvider interface {
-	Chat(ctx context.Context, messages []Message, model string, options ChatOptions) (*LLMResponse, error)
-	ChatStream(ctx context.Context, messages []Message, model string, options ChatOptions, handler StreamHandler) error
-	GetDefaultModel() string
-}
-
-type StreamHandler func(chunk *LLMResponse) error
-
-type ThinkingCapable interface {
-	LLMProvider
-	SupportsThinking() bool
+type ProviderDef struct {
+	APIBase          string
+	Params           map[string]any
+	ExtractReasoning ExtractReasoningFunc
 }
 
 type ProviderBuilder interface {
@@ -131,43 +108,38 @@ func RegisterProvider(protocol string, builder ProviderBuilder) {
 	providerRegistry[protocol] = builder
 }
 
+type LLMProvider interface {
+	Chat(ctx context.Context, messages []Message, model string, params map[string]any) (*LLMResponse, error)
+	ChatStream(ctx context.Context, messages []Message, model string, params map[string]any, handler StreamHandler) error
+	GetDefaultModel() string
+}
+
+type StreamHandler func(chunk *LLMResponse) error
+
 func CreateProvider(cfg *ModelConfig) (LLMProvider, string, error) {
 	if cfg == nil {
-		return nil, "", errors.New("config is nil")
+		return nil, "", fmt.Errorf("%w: config is nil", ErrAPIError)
 	}
 	if strings.TrimSpace(cfg.Model) == "" {
-		return nil, "", errors.New("model is required")
+		return nil, "", fmt.Errorf("%w: model is required", ErrAPIError)
 	}
 
 	protocol, modelID := ExtractProtocol(cfg.Model)
-	if builder, ok := providerRegistry[protocol]; ok {
-		return builder.Build(cfg)
+	builder, ok := providerRegistry[protocol]
+	if !ok {
+		return nil, "", fmt.Errorf("provider not registered: %s", protocol)
 	}
-
-	apiBase := strings.TrimSpace(cfg.APIBase)
-	if apiBase == "" {
-		switch protocol {
-		case "zhipu":
-			apiBase = DefaultZhipuAPIBase
-		case "zhipu-coding":
-			apiBase = DefaultZhipuCodingAPIBase
-		}
-	}
-
-	p := NewProvider(cfg.APIKey, apiBase, cfg.Proxy)
-	if p == nil {
-		return nil, "", fmt.Errorf("%w: failed to create provider", ErrAPIError)
-	}
-	return p, modelID, nil
+	provider, _, err := builder.Build(cfg)
+	return provider, modelID, err
 }
 
 func ExtractProtocol(model string) (protocol, modelID string) {
 	clean := strings.TrimSpace(model)
 	if parts := strings.SplitN(clean, "/", 2); len(parts) == 2 {
-		prefix := strings.TrimSpace(parts[0])
-		id := strings.TrimSpace(parts[1])
-		if prefix != "" && id != "" {
-			return prefix, id
+		protocol = strings.TrimSpace(parts[0])
+		modelID = strings.TrimSpace(parts[1])
+		if protocol != "" && modelID != "" {
+			return protocol, modelID
 		}
 	}
 	return "openai", clean

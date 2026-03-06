@@ -13,11 +13,14 @@ import (
 
 type stubChatProvider struct{}
 
-func (s *stubChatProvider) Chat(context.Context, []providers.Message, string, providers.ChatOptions) (*providers.LLMResponse, error) {
+func (s *stubChatProvider) Chat(ctx context.Context, messages []providers.Message, model string, options map[string]any) (*providers.LLMResponse, error) {
 	return &providers.LLMResponse{ReasoningContent: "thinking", Content: "ok"}, nil
 }
 
-func (s *stubChatProvider) ChatStream(context.Context, []providers.Message, string, providers.ChatOptions, providers.StreamHandler) error {
+func (s *stubChatProvider) ChatStream(ctx context.Context, messages []providers.Message, model string, options map[string]any, handler providers.StreamHandler) error {
+	handler(&providers.LLMResponse{ReasoningContent: "thinking", IsStreaming: true})
+	handler(&providers.LLMResponse{Content: "ok", IsStreaming: true})
+	handler(&providers.LLMResponse{IsDone: true})
 	return nil
 }
 

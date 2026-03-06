@@ -240,7 +240,7 @@ func HandleChatSend(conn *websocket.Conn, req WSRequest) error {
 	var finalReasoning string
 	var err error
 
-	err = ChatProvider.ChatStream(context.Background(), messages, ChatModel, providers.DefaultChatOptions(),
+	err = ChatProvider.ChatStream(context.Background(), messages, ChatModel, nil,
 		func(chunk *providers.LLMResponse) error {
 			// Handle reasoning/thinking stream
 			if chunk.ReasoningContent != "" {

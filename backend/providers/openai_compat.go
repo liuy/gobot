@@ -11,51 +11,37 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"reflect"
 	"strings"
 	"time"
 )
 
 type HTTPProvider struct {
-	apiKey         string
-	apiBase        string
-	maxTokensField string
-	httpClient     HTTPClient
+	apiKey           string
+	apiBase          string
+	httpClient       HTTPClient
+	params           map[string]any
+	extractReasoning ExtractReasoningFunc
 }
 
 type Option func(*HTTPProvider)
 
-func WithMaxTokensField(maxTokensField string) Option {
-	return func(p *HTTPProvider) {
-		if maxTokensField != "" {
-			p.maxTokensField = maxTokensField
-		}
-	}
-}
-
-func WithRequestTimeout(timeout time.Duration) Option {
-	return func(p *HTTPProvider) {
-		if timeout <= 0 {
-			return
-		}
-		if c, ok := p.httpClient.(*DefaultHTTPClient); ok && c.client != nil {
-			c.client.Timeout = timeout
-			return
-		}
-		p.httpClient = &DefaultHTTPClient{client: &http.Client{Timeout: timeout}}
-	}
-}
-
 func WithHTTPClient(client HTTPClient) Option {
 	return func(p *HTTPProvider) {
-		if client == nil {
-			return
+		if client != nil {
+			p.httpClient = client
 		}
-		v := reflect.ValueOf(client)
-		if (v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface || v.Kind() == reflect.Map || v.Kind() == reflect.Slice || v.Kind() == reflect.Func || v.Kind() == reflect.Chan) && v.IsNil() {
-			return
-		}
-		p.httpClient = client
+	}
+}
+
+func WithParams(params map[string]any) Option {
+	return func(p *HTTPProvider) {
+		p.params = params
+	}
+}
+
+func WithExtractReasoning(f ExtractReasoningFunc) Option {
+	return func(p *HTTPProvider) {
+		p.extractReasoning = f
 	}
 }
 
@@ -68,15 +54,9 @@ func NewProvider(apiKey, apiBase, proxy string, opts ...Option) *HTTPProvider {
 	}
 
 	p := &HTTPProvider{
-		apiKey:         apiKey,
-		apiBase:        strings.TrimSpace(apiBase),
-		maxTokensField: DefaultZhipuMaxTokensField,
-		httpClient: &DefaultHTTPClient{
-			client: &http.Client{
-				Timeout:   120 * time.Second,
-				Transport: transport,
-			},
-		},
+		apiKey:     apiKey,
+		apiBase:    strings.TrimSpace(apiBase),
+		httpClient: &DefaultHTTPClient{client: &http.Client{Timeout: 120 * time.Second, Transport: transport}},
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -87,8 +67,8 @@ func NewProvider(apiKey, apiBase, proxy string, opts ...Option) *HTTPProvider {
 	return p
 }
 
-func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, model string, options ChatOptions) (*LLMResponse, error) {
-	resp, err := p.sendChatRequest(ctx, messages, model, options, false)
+func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, model string, params map[string]any) (*LLMResponse, error) {
+	resp, err := p.sendChatRequest(ctx, messages, model, params, false)
 	if err != nil {
 		return nil, err
 	}
@@ -102,6 +82,7 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, model strin
 		Choices []struct {
 			Message struct {
 				Content   string `json:"content"`
+				Thinking  string `json:"thinking"`
 				ToolCalls []struct {
 					ID       string `json:"id"`
 					Type     string `json:"type"`
@@ -127,8 +108,9 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, model strin
 	}
 
 	out := &LLMResponse{
-		Content:      payload.Choices[0].Message.Content,
-		FinishReason: payload.Choices[0].FinishReason,
+		Content:          payload.Choices[0].Message.Content,
+		ReasoningContent: payload.Choices[0].Message.Thinking,
+		FinishReason:     payload.Choices[0].FinishReason,
 	}
 	if payload.Usage != nil {
 		out.Usage = &UsageInfo{
@@ -156,11 +138,11 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, model strin
 	return out, nil
 }
 
-func (p *HTTPProvider) ChatStream(ctx context.Context, messages []Message, model string, options ChatOptions, handler StreamHandler) error {
+func (p *HTTPProvider) ChatStream(ctx context.Context, messages []Message, model string, params map[string]any, handler StreamHandler) error {
 	if handler == nil {
 		return fmt.Errorf("%w: nil stream handler", ErrAPIError)
 	}
-	resp, err := p.sendChatRequest(ctx, messages, model, options, true)
+	resp, err := p.sendChatRequest(ctx, messages, model, params, true)
 	if err != nil {
 		return err
 	}
@@ -184,13 +166,18 @@ func (p *HTTPProvider) ChatStream(ctx context.Context, messages []Message, model
 			return handler(&LLMResponse{IsDone: true})
 		}
 
+		var rawChunk map[string]any
+		if err := json.Unmarshal([]byte(payload), &rawChunk); err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
+		}
+
 		var chunk struct {
 			Choices []struct {
 				Delta struct {
 					Content          string `json:"content"`
-					Thinking         string `json:"thinking"`         // GLM/DeepSeek
-					ReasoningContent string `json:"reasoning_content"` // OpenAI
-					ToolCalls []struct {
+					Thinking         string `json:"thinking"`
+					ReasoningContent string `json:"reasoning_content"`
+					ToolCalls        []struct {
 						ID       string `json:"id"`
 						Type     string `json:"type"`
 						Function struct {
@@ -206,9 +193,13 @@ func (p *HTTPProvider) ChatStream(ctx context.Context, messages []Message, model
 			return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
 		}
 		for _, c := range chunk.Choices {
+			reasoning := c.Delta.Thinking + c.Delta.ReasoningContent
+			if reasoning == "" && p.extractReasoning != nil {
+				reasoning = p.extractReasoning(rawChunk)
+			}
 			out := &LLMResponse{
 				Content:          c.Delta.Content,
-				ReasoningContent: c.Delta.Thinking + c.Delta.ReasoningContent,
+				ReasoningContent: reasoning,
 				FinishReason:     c.FinishReason,
 				IsStreaming:      true,
 			}
@@ -262,36 +253,21 @@ func (p *HTTPProvider) GetDefaultModel() string {
 	return ""
 }
 
-func (p *HTTPProvider) sendChatRequest(ctx context.Context, messages []Message, model string, options ChatOptions, stream bool) (*http.Response, error) {
+func (p *HTTPProvider) sendChatRequest(ctx context.Context, messages []Message, model string, params map[string]any, stream bool) (*http.Response, error) {
 	if p == nil || strings.TrimSpace(p.apiBase) == "" {
 		return nil, fmt.Errorf("%w: api base is required", ErrAPIError)
 	}
 
-	body := map[string]any{
-		"model":    model,
-		"messages": messages,
-		"stream":   stream,
+	body := make(map[string]any)
+	for k, v := range p.params {
+		body[k] = v
 	}
-	if options.Temperature != 0 {
-		body["temperature"] = options.Temperature
+	for k, v := range params {
+		body[k] = v
 	}
-	if options.TopP != 0 {
-		body["top_p"] = options.TopP
-	}
-	if options.MaxTokens > 0 {
-		key := p.maxTokensField
-		if key == "" {
-			key = "max_tokens"
-		}
-		body[key] = options.MaxTokens
-	}
-	if len(options.Tools) > 0 {
-		body["tools"] = options.Tools
-		body["tool_choice"] = "auto"
-	}
-	if options.Thinking != nil {
-		body["thinking"] = *options.Thinking
-	}
+	body["model"] = model
+	body["messages"] = messages
+	body["stream"] = stream
 
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -304,6 +280,9 @@ func (p *HTTPProvider) sendChatRequest(ctx context.Context, messages []Message, 
 		return nil, fmt.Errorf("%w: %v", ErrAPIError, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if stream {
+		req.Header.Set("Accept", "text/event-stream")
+	}
 	if p.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
