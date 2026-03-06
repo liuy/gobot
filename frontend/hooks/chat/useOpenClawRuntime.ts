@@ -450,7 +450,14 @@ export function useOpenClawRuntime({
       case "delta":
         if (payload.message) {
           if (payload.message.role === "assistant") {
-            beginContentArrival();
+            // Only trigger content arrival when we get actual text content (not just thinking)
+            const content = payload.message.content;
+            const hasTextContent = Array.isArray(content)
+              ? content.some((p) => p.type === "text")
+              : typeof content === "string" && content.trim().length > 0;
+            if (hasTextContent) {
+              beginContentArrival();
+            }
             setIsStreaming(true);
             if (!activeRunIdRef.current) {
               markRunStart();

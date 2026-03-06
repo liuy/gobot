@@ -44,6 +44,7 @@ interface ChatViewportProps {
   onUnpin: () => void;
   zenMode: boolean;
   isRunActive: boolean;
+  awaitingResponse: boolean;
   thinkingStartTime: number | null;
   thinkingLabel?: string;
   quotePopup: { x: number; y: number; text: string } | null;
@@ -75,12 +76,23 @@ export function ChatViewport({
   onUnpin,
   zenMode,
   isRunActive,
+  awaitingResponse,
   thinkingStartTime,
   thinkingLabel,
   quotePopup,
   quotePopupRef,
   onAcceptQuote,
 }: ChatViewportProps) {
+  // Check if the streaming message has any text content yet
+  // If it only has thinking content, keep showing the thinking indicator
+  const streamingMessage = streamingId ? displayMessages.find((m) => m.id === streamingId) : null;
+  const hasTextContent = streamingMessage?.content
+    ? (Array.isArray(streamingMessage.content)
+        ? streamingMessage.content.some((p) => p.type === "text" && (p.text || "").trim().length > 0)
+        : typeof streamingMessage.content === "string" && streamingMessage.content.trim().length > 0)
+    : false;
+  const showThinkingIndicator = awaitingResponse || (isStreaming && !hasTextContent);
+
   const [zenRenderMode, setZenRenderMode] = useState(zenMode);
   const [expandedZenGroups, setExpandedZenGroups] = useState<Record<string, boolean>>({});
   const [collapsingZenGroups, setCollapsingZenGroups] = useState<Record<string, boolean>>({});
@@ -731,7 +743,7 @@ export function ChatViewport({
               </React.Fragment>
             );
           })}
-          <ThinkingIndicator visible={isRunActive} startTime={thinkingStartTime ?? undefined} label={thinkingLabel} />
+          <ThinkingIndicator visible={showThinkingIndicator} startTime={thinkingStartTime ?? undefined} label={thinkingLabel} />
           <div ref={bottomRef} />
         </div>
       </main>

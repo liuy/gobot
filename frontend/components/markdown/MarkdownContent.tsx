@@ -14,7 +14,7 @@ export function BlockCursor({ children, stale }: { children: React.ReactNode; st
 
 // Cursor for empty streaming state - fades out when stale
 export function StreamingCursor({ stale }: { stale?: boolean }) {
-  return <span className={`inline-block w-2 h-4 transition-colors duration-1000 ${
+  return <span className={`inline-block w-1 h-4 align-middle transition-colors duration-1000 ${
     stale ? "bg-transparent" : "bg-foreground animate-pulse"
   }`} />;
 }

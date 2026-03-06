@@ -638,6 +638,7 @@ export default function Home() {
         onUnpin={handleUnpinSubagent}
         zenMode={zenMode}
         isRunActive={isRunActive}
+        awaitingResponse={awaitingResponse}
         thinkingStartTime={thinkingStartTime}
         thinkingLabel={thinkingLabel}
         quotePopup={quotePopup}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { MarkdownContent, BlockCursor, StreamingCursor } from "@/components/markdown/MarkdownContent";
+import { MarkdownContent, StreamingCursor } from "@/components/markdown/MarkdownContent";
 
 // Module-level: remembered rate from previous responses (persists across component instances)
 let learnedCharsPerMs = 0.15; // Default: ~150 chars/sec, learned from history
@@ -19,10 +19,6 @@ export function StreamingText({ text, isStreaming }: { text: string; isStreaming
   const charsPerMsRef = useRef(learnedCharsPerMs); // Start with learned rate
   const lastFrameTimeRef = useRef(0);
   const fractionalCharsRef = useRef(0); // Accumulate sub-char progress
-
-  // Cursor fades out after 3s of no movement
-  const [cursorStale, setCursorStale] = useState(false);
-  const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // When text grows, record the delta and let animation catch up
   useEffect(() => {
@@ -137,35 +133,17 @@ export function StreamingText({ text, isStreaming }: { text: string; isStreaming
     };
   }, [isStreaming]);
 
-  // Fade cursor after 1s of no movement
-  useEffect(() => {
-    if (!isStreaming) {
-      setCursorStale(false);
-      return;
-    }
-    setCursorStale(false);
-    if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
-    staleTimerRef.current = setTimeout(() => setCursorStale(true), 1000);
-    return () => {
-      if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
-    };
-  }, [displayLen, isStreaming]);
+  // Keep cursor visible while streaming (no stale fade)
+  // Cursor only hides when isStreaming becomes false
+  const cursorStale = false;
 
   const visibleText = text.slice(0, displayLen);
 
-  // When streaming with text, show last char with block cursor (reversed colors)
-  // When streaming with no text yet, show empty block cursor
+  // When streaming with text, show blinking vertical bar cursor after text
+  // When streaming with no text yet, show empty cursor
   if (isStreaming) {
-    if (visibleText.length > 0) {
-      const textWithoutLast = visibleText.slice(0, -1);
-      const lastChar = visibleText.slice(-1);
-      // If last char is whitespace/newline, show a visible space block instead
-      const cursorContent = /\s/.test(lastChar) ? " " : lastChar;
-      const cursor = <BlockCursor stale={cursorStale}>{cursorContent}</BlockCursor>;
-      return <MarkdownContent text={textWithoutLast} cursor={cursor} />;
-    }
-    // No text yet - show empty cursor
-    return <StreamingCursor stale={cursorStale} />;
+    const cursor = <StreamingCursor stale={cursorStale} />;
+    return <MarkdownContent text={visibleText} cursor={cursor} />;
   }
 
   return <MarkdownContent text={visibleText} />;
