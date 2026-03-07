@@ -129,7 +129,7 @@ func TestBuild_DropHotMemory(t *testing.T) {
 		t.Errorf("Build failed: %v", err)
 	}
 
-	// hot tokens 占比 >= 20% 时应该被 drop
+	// hot tokens should be dropped when ratio >= 20%
 	if ctx.Hot == nil {
 		t.Log("Hot memory was dropped to fit within budget (expected)")
 	} else {
@@ -240,7 +240,7 @@ func TestBuild_TableDriven(t *testing.T) {
 			}
 			defer cache.Close()
 
-			// 如果期望 drop hot，设置足够大的 hot 数据
+			// If expecting hot drop, set large enough hot data
 			if tt.expectHotDrop {
 				cache.hotDataMu.Lock()
 				cache.hotData = &HotMemoryData{

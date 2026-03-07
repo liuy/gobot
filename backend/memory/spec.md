@@ -83,9 +83,10 @@
 // =============================================================================
 //
 // RELY:
-//   - Go standard library: database/sql, encoding/json, os, sync, time, testing
+//   - Go standard library: database/sql, encoding/json, log, os, sync, time, testing
 //   - SQLite driver: github.com/mattn/go-sqlite3 (requires CGO + gcc)
 //   - Chinese tokenization: github.com/yanyiwu/gojieba (requires CGO + g++)
+//   - Internal logger: gobot/log (for structured logging)
 //
 // BUILD REQUIREMENTS:
 //   - CGO_ENABLED=1
@@ -413,7 +414,7 @@ func (c *MemoryCache) startHotWorker()
 //
 // POST:
 //   - Sends msg to hotUpdateChan (non-blocking)
-//   - If channel full: drops message (throttling)
+//   - If channel full: drops message and logs warning
 //   - Returns immediately (async)
 //
 // INTENT:
