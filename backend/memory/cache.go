@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"gobot/log"
 )
 
 const longtermCheckTTL = 30 * time.Second
@@ -269,12 +271,11 @@ func (c *MemoryCache) startHotWorker() {
 // UpdateHotAsync sends a message to the hot update worker.
 // If the channel is full (high load), the message is dropped silently.
 // This is acceptable because hot memory is a best-effort cache of recent keywords.
-// TODO: Add metrics counter to track dropped messages.
 func (c *MemoryCache) UpdateHotAsync(msg Message) {
 	select {
 	case c.hotUpdateChan <- msg:
 	default:
-		// Channel full, message dropped
+		log.Warn("[memory] hot update dropped: channel full, msg_id=%s", msg.ID)
 	}
 }
 
