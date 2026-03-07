@@ -146,11 +146,15 @@ Generate tests for <target_files>
 Implement all TODO functions in <target_files>
 
 ## Spec format
-- MODULE SPEC: package-level contract
+- MODULE SPEC: package-level contract (includes IMPLEMENTATION NOTES if any)
 - FUNC SPEC: function-level contract (PRE/POST/INTENT)
 
 ## Coding Principles
 {coding_principles}
+
+## Implementation Notes
+Pay special attention to IMPLEMENTATION NOTES in MODULE SPEC.
+These are module-specific requirements that override general principles.
 
 ## Reference
 - <reference_files>
