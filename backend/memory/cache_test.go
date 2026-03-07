@@ -262,7 +262,7 @@ func TestGetRecent_Fixed20(t *testing.T) {
 
 	for i := 0; i < 25; i++ {
 		msg := Message{
-			ID:        string(rune('a' + i%26)),
+			ID:        fmt.Sprintf("msg-%d", i),
 			Content:   "test",
 			Timestamp: time.Now(),
 		}

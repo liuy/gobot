@@ -1,7 +1,7 @@
 # gobot backend Makefile
 # Enables FTS5 for go-sqlite3
 
-.PHONY: build test test-race test-coverage clean
+.PHONY: build test test-race coverage clean
 
 # Build with FTS5 support
 build:
@@ -16,7 +16,7 @@ test-race:
 	CGO_ENABLED=1 go test -tags "fts5 jieba" -race -v ./memory ./protocol ./providers ./log
 
 # Run tests with coverage report
-test-coverage:
+coverage:
 	CGO_ENABLED=1 go test -tags "fts5 jieba" -coverprofile=coverage.out ./memory ./protocol ./providers ./log
 	go tool cover -func=coverage.out
 	@echo ""

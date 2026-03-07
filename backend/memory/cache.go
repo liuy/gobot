@@ -18,7 +18,7 @@ type MemoryCache struct {
 	longterm          string
 	longtermMod       time.Time
 	longtermMu        sync.RWMutex
-	longtermLastCheck time.Time
+	longtermLastCheck time.Time // zero value intentionally triggers first reload
 
 	hotData   *HotMemoryData
 	hotDataMu sync.RWMutex
@@ -141,9 +141,10 @@ func (c *MemoryCache) GetLongterm() (string, error) {
 		return "", err
 	}
 
-	// Check if we need to reload
+	// Check if we need to reload (based on file modification time only)
+	// Note: Empty content is a valid cached value, don't trigger reload based on it
 	c.longtermMu.RLock()
-	shouldReload := !info.ModTime().Equal(c.longtermMod) || c.longterm == ""
+	shouldReload := !info.ModTime().Equal(c.longtermMod)
 	c.longtermMu.RUnlock()
 
 	if !shouldReload {
@@ -188,7 +189,9 @@ func (c *MemoryCache) GetHot() (*HotMemoryData, error) {
 
 // GetRecent returns the recent messages.
 // Note: Returns internal slice for performance. Callers must NOT modify the returned slice.
-// This is safe because all callers are internal (ContextBuilder) which only reads.
+// Safe operations: ctx.Recent[:n] (only modifies slice header)
+// Unsafe operations: append(), modifying elements
+// This is safe because all callers are internal (ContextBuilder) which only does slice truncation.
 func (c *MemoryCache) GetRecent() []Message {
 	c.recentMu.RLock()
 	defer c.recentMu.RUnlock()
@@ -263,10 +266,15 @@ func (c *MemoryCache) startHotWorker() {
 	}()
 }
 
+// UpdateHotAsync sends a message to the hot update worker.
+// If the channel is full (high load), the message is dropped silently.
+// This is acceptable because hot memory is a best-effort cache of recent keywords.
+// TODO: Add metrics counter to track dropped messages.
 func (c *MemoryCache) UpdateHotAsync(msg Message) {
 	select {
 	case c.hotUpdateChan <- msg:
 	default:
+		// Channel full, message dropped
 	}
 }
 
@@ -297,6 +305,9 @@ func (c *MemoryCache) processHotUpdate(messages []Message) {
 	memoryDir := filepath.Join(c.dataDir, "memory")
 	hotPath := filepath.Join(memoryDir, "hot.json")
 
+	// Atomic write: only update memory if disk write succeeds
+	// This ensures memory and disk are consistent
+	// TODO: Add error logging and consider updating memory even on disk failure
 	if err := saveHot(hotPath, newHotData); err != nil {
 		return
 	}
