@@ -370,13 +370,16 @@ func (c *MemoryCache) GetRecent() []Message
 //
 // PRE:
 //   - msg is valid (non-empty ID, Content, Timestamp)
+//   - cache is not closed
 //
 // POST:
+//   - Returns error if cache is closed
 //   - Validates input (returns error if invalid)
 //   - Updates recentMessages immediately (synchronous, ~100ns)
 //   - Queues msg for async Cold + Hot update
 //   - Returns immediately (~1µs) regardless of system load
 //   - If queue full: drops message and logs warning
+//   - Duplicate IDs are silently ignored (INSERT OR IGNORE)
 //
 // INTENT:
 //   - Add message to memory system (async, non-blocking)
@@ -398,7 +401,7 @@ func (c *MemoryCache) Append(msg Message) error
 // POST:
 //   - Runs in separate goroutine
 //   - Batches messages (every 100ms or on stop)
-//   - Batch writes to cold.db
+//   - Batch writes to cold.db (INSERT OR IGNORE for duplicates)
 //   - Updates hot memory (keywords, topics)
 //   - Writes hot.json atomically
 //   - On Close(): drains remaining messages before exit

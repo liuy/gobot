@@ -2,6 +2,7 @@ api.md
 backend/gobot
 backend/frontend/
 backend/go.sum
+backend/coverage.*
 frontend/pnpm-lock.yaml
 plan.md
 frontend/next-env.d.ts

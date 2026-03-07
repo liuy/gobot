@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gobot/log"
@@ -24,7 +25,7 @@ type MemoryCache struct {
 	longterm          string
 	longtermMod       time.Time
 	longtermMu        sync.RWMutex
-	longtermLastCheck time.Time // zero value intentionally triggers first reload
+	longtermLastCheck time.Time
 
 	hotData   *HotMemoryData
 	hotDataMu sync.RWMutex
@@ -34,11 +35,12 @@ type MemoryCache struct {
 
 	coldDB *sql.DB
 
-	updateChan  chan Message
-	workerWg    sync.WaitGroup
-	stopChan    chan struct{}
-	closeOnce   sync.Once
-	closeErr    error
+	updateChan chan Message
+	workerWg   sync.WaitGroup
+	stopChan   chan struct{}
+	closeOnce  sync.Once
+	closeErr   error
+	closed     int32 // atomic: 0 = open, 1 = closed
 
 	nowFunc func() time.Time
 }
@@ -75,6 +77,7 @@ func NewMemoryCache(dataDir string) (*MemoryCache, error) {
 
 	if info, err := os.Stat(longtermPath); err == nil {
 		cache.longtermMod = info.ModTime()
+		cache.longtermLastCheck = time.Now() // Initial load counts as check
 	}
 
 	hotPath := filepath.Join(memoryDir, "hot.json")
@@ -99,6 +102,7 @@ func NewMemoryCache(dataDir string) (*MemoryCache, error) {
 
 func (c *MemoryCache) Close() error {
 	c.closeOnce.Do(func() {
+		atomic.StoreInt32(&c.closed, 1)
 		close(c.stopChan)
 
 		done := make(chan struct{})
@@ -196,6 +200,11 @@ func (c *MemoryCache) GetRecent() []Message {
 // This is an async operation: Recent is updated immediately, Cold and Hot are updated asynchronously.
 // Returns immediately (~1µs) regardless of system load.
 func (c *MemoryCache) AddMessage(msg Message) error {
+	// Check if closed
+	if atomic.LoadInt32(&c.closed) == 1 {
+		return fmt.Errorf("memory cache is closed")
+	}
+
 	// Validate input
 	if strings.TrimSpace(msg.ID) == "" {
 		return fmt.Errorf("message ID cannot be empty")

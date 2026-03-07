@@ -322,8 +322,7 @@ func TestAppend_InsertToDatabase(t *testing.T) {
 		t.Fatalf("Append failed: %v", err)
 	}
 
-	// Wait for async worker to flush
-	time.Sleep(200 * time.Millisecond)
+	waitForMessage(t, cache, "Test", 1)
 
 	results, err := cache.Search("Test")
 	if err != nil {
@@ -493,8 +492,7 @@ func TestSearch_ValidQuery(t *testing.T) {
 		t.Fatalf("Append failed: %v", err)
 	}
 
-	// Wait for async worker to flush
-	time.Sleep(200 * time.Millisecond)
+	waitForMessage(t, cache, "Hello", 1)
 
 	results, err := cache.Search("Hello")
 	if err != nil {

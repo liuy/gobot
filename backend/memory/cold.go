@@ -77,7 +77,7 @@ func insertMessage(db *sql.DB, msg Message) error {
 	contentTokens := tokenizeChinese(msg.Content)
 
 	_, err = db.Exec(`
-		INSERT INTO messages (id, content, content_tokens, timestamp, human_ids, channel, chat_id, is_from_human, type)
+		INSERT OR IGNORE INTO messages (id, content, content_tokens, timestamp, human_ids, channel, chat_id, is_from_human, type)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, msg.ID, msg.Content, contentTokens, msg.Timestamp.Format("2006-01-02 15:04:05"), string(humanIDsJSON),
 		msg.Channel, msg.ChatID, msg.IsFromHuman, msg.Type)
