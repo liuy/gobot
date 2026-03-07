@@ -322,6 +322,9 @@ func TestAppend_InsertToDatabase(t *testing.T) {
 		t.Fatalf("Append failed: %v", err)
 	}
 
+	// Wait for async worker to flush
+	time.Sleep(200 * time.Millisecond)
+
 	results, err := cache.Search("Test")
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
@@ -490,6 +493,9 @@ func TestSearch_ValidQuery(t *testing.T) {
 		t.Fatalf("Append failed: %v", err)
 	}
 
+	// Wait for async worker to flush
+	time.Sleep(200 * time.Millisecond)
+
 	results, err := cache.Search("Hello")
 	if err != nil {
 		t.Errorf("Search failed: %v", err)
@@ -499,7 +505,7 @@ func TestSearch_ValidQuery(t *testing.T) {
 	}
 }
 
-func TestUpdateHotAsync_NonBlocking(t *testing.T) {
+func TestAddMessage_NonBlocking(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	cache, err := NewMemoryCache(tmpDir)
@@ -511,11 +517,11 @@ func TestUpdateHotAsync_NonBlocking(t *testing.T) {
 	msg := Message{ID: "1", Content: "test", Timestamp: time.Now()}
 
 	start := time.Now()
-	cache.UpdateHotAsync(msg)
+	cache.AddMessage(msg)
 	duration := time.Since(start)
 
 	if duration > 10*time.Millisecond {
-		t.Errorf("UpdateHotAsync took too long: %v", duration)
+		t.Errorf("AddMessage took too long: %v", duration)
 	}
 }
 

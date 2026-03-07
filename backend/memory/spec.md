@@ -365,61 +365,47 @@ func (c *MemoryCache) GetRecent() []Message
 
 // --- Writers ---
 
-// FUNC SPEC: Append
+// FUNC SPEC: AddMessage
 // File: cache.go
 //
 // PRE:
 //   - msg is valid (non-empty ID, Content, Timestamp)
-//   - Caller ensures message integrity
 //
 // POST:
-//   - Validates input (returns error if ID/Content empty or Timestamp zero)
-//   - Inserts message into cold.db (synchronous, ~5ms)
-//   - Updates FTS5 index (via trigger)
-//   - Updates recentMessages cache (prepend, keep max 20)
-//   - Sends msg to hotUpdateChan for async hot memory update
-//   - Returns error if validation or DB write fails
+//   - Validates input (returns error if invalid)
+//   - Updates recentMessages immediately (synchronous, ~100ns)
+//   - Queues msg for async Cold + Hot update
+//   - Returns immediately (~1µs) regardless of system load
+//   - If queue full: drops message and logs warning
 //
 // INTENT:
-//   - Append message to history + update cache
+//   - Add message to memory system (async, non-blocking)
+func (c *MemoryCache) AddMessage(msg Message) error
+
+// FUNC SPEC: Append
+// Alias for AddMessage (backward compatibility)
 func (c *MemoryCache) Append(msg Message) error
 
-// --- Hot Update Worker ---
+// --- Async Worker ---
 
-// FUNC SPEC: startHotWorker
+// FUNC SPEC: startWorker
 // File: cache.go
 //
 // PRE:
 //   - cache is initialized
-//   - hotUpdateChan is created
+//   - updateChan is created
 //
 // POST:
 //   - Runs in separate goroutine
-//   - Processes messages from hotUpdateChan serially
-//   - Extracts keywords, updates topics, cleans expired (7-day TTL)
-//   - Writes to hot.json atomically (tmp + rename)
-//   - Updates hot cache
-//   - Implements throttling: batch updates every 500ms (configurable)
+//   - Batches messages (every 100ms or on stop)
+//   - Batch writes to cold.db
+//   - Updates hot memory (keywords, topics)
+//   - Writes hot.json atomically
+//   - On Close(): drains remaining messages before exit
 //
 // INTENT:
-//   - Process hot memory updates in single goroutine (avoid race conditions)
-func (c *MemoryCache) startHotWorker()
-
-// FUNC SPEC: UpdateHotAsync
-// File: cache.go
-//
-// PRE:
-//   - cache is initialized
-//   - hotUpdateChan is not closed
-//
-// POST:
-//   - Sends msg to hotUpdateChan (non-blocking)
-//   - If channel full: drops message and logs warning
-//   - Returns immediately (async)
-//
-// INTENT:
-//   - Queue message for hot memory update (fire-and-forget)
-func (c *MemoryCache) UpdateHotAsync(msg Message)
+//   - Unified async processing for Cold + Hot updates
+func (c *MemoryCache) startWorker()
 
 // =============================================================================
 // File: cold.go

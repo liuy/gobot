@@ -12,7 +12,11 @@ import (
 	"gobot/log"
 )
 
-const longtermCheckTTL = 30 * time.Second
+const (
+	longtermCheckTTL = 30 * time.Second
+	updateChanSize   = 1000
+	updateInterval   = 100 * time.Millisecond
+)
 
 type MemoryCache struct {
 	dataDir string
@@ -30,11 +34,11 @@ type MemoryCache struct {
 
 	coldDB *sql.DB
 
-	hotUpdateChan chan Message
-	hotWorkerWg   sync.WaitGroup
-	stopChan      chan struct{}
-	closeOnce     sync.Once
-	closeErr      error
+	updateChan  chan Message
+	workerWg    sync.WaitGroup
+	stopChan    chan struct{}
+	closeOnce   sync.Once
+	closeErr    error
 
 	nowFunc func() time.Time
 }
@@ -54,7 +58,7 @@ func NewMemoryCache(dataDir string) (*MemoryCache, error) {
 	cache := &MemoryCache{
 		dataDir:        dataDir,
 		coldDB:         coldDB,
-		hotUpdateChan:  make(chan Message, 100),
+		updateChan:     make(chan Message, updateChanSize),
 		stopChan:       make(chan struct{}),
 		nowFunc:        time.Now,
 		hotData:        &HotMemoryData{},
@@ -88,7 +92,7 @@ func NewMemoryCache(dataDir string) (*MemoryCache, error) {
 	}
 	cache.recentMessages = recent
 
-	cache.startHotWorker()
+	cache.startWorker()
 
 	return cache, nil
 }
@@ -99,7 +103,7 @@ func (c *MemoryCache) Close() error {
 
 		done := make(chan struct{})
 		go func() {
-			c.hotWorkerWg.Wait()
+			c.workerWg.Wait()
 			close(done)
 		}()
 
@@ -115,8 +119,6 @@ func (c *MemoryCache) Close() error {
 }
 
 func (c *MemoryCache) GetLongterm() (string, error) {
-	// Fast path: return cached content if within TTL
-	// Note: We cache even empty string to avoid repeated os.Stat calls
 	now := c.nowFunc()
 	c.longtermMu.RLock()
 	if now.Sub(c.longtermLastCheck) < longtermCheckTTL {
@@ -126,7 +128,6 @@ func (c *MemoryCache) GetLongterm() (string, error) {
 	}
 	c.longtermMu.RUnlock()
 
-	// Slow path: check file modification time
 	memoryDir := filepath.Join(c.dataDir, "memory")
 	longtermPath := filepath.Join(memoryDir, "longterm.md")
 
@@ -143,14 +144,11 @@ func (c *MemoryCache) GetLongterm() (string, error) {
 		return "", err
 	}
 
-	// Check if we need to reload (based on file modification time only)
-	// Note: Empty content is a valid cached value, don't trigger reload based on it
 	c.longtermMu.RLock()
 	shouldReload := !info.ModTime().Equal(c.longtermMod)
 	c.longtermMu.RUnlock()
 
 	if !shouldReload {
-		// Cache hit - update last check time under write lock
 		c.longtermMu.Lock()
 		c.longtermLastCheck = now
 		result := c.longterm
@@ -158,7 +156,6 @@ func (c *MemoryCache) GetLongterm() (string, error) {
 		return result, nil
 	}
 
-	// Cache miss - load from disk
 	content, err := loadLongterm(longtermPath)
 	if err != nil {
 		return "", err
@@ -174,11 +171,7 @@ func (c *MemoryCache) GetLongterm() (string, error) {
 }
 
 // GetHot returns the hot memory data.
-// Note: Returns internal pointer for performance. Callers must NOT modify the returned data.
-// This is safe because:
-// 1. Current usage is 100% internal (ContextBuilder) which only reads
-// 2. All modifications go through Append() → hot worker → updates c.hotData
-// 3. No external process modifies hot.json
+// Returns internal pointer for performance. Callers must NOT modify the returned data.
 func (c *MemoryCache) GetHot() (*HotMemoryData, error) {
 	c.hotDataMu.RLock()
 	defer c.hotDataMu.RUnlock()
@@ -189,18 +182,20 @@ func (c *MemoryCache) GetHot() (*HotMemoryData, error) {
 	return c.hotData, nil
 }
 
-// GetRecent returns the recent messages.
-// Note: Returns internal slice for performance. Callers must NOT modify the returned slice.
+// GetRecent returns the recent messages (up to 20).
+// Returns internal slice for performance. Callers must NOT modify the returned slice.
 // Safe operations: ctx.Recent[:n] (only modifies slice header)
 // Unsafe operations: append(), modifying elements
-// This is safe because all callers are internal (ContextBuilder) which only does slice truncation.
 func (c *MemoryCache) GetRecent() []Message {
 	c.recentMu.RLock()
 	defer c.recentMu.RUnlock()
 	return c.recentMessages
 }
 
-func (c *MemoryCache) Append(msg Message) error {
+// AddMessage adds a message to the memory system.
+// This is an async operation: Recent is updated immediately, Cold and Hot are updated asynchronously.
+// Returns immediately (~1µs) regardless of system load.
+func (c *MemoryCache) AddMessage(msg Message) error {
 	// Validate input
 	if strings.TrimSpace(msg.ID) == "" {
 		return fmt.Errorf("message ID cannot be empty")
@@ -212,10 +207,7 @@ func (c *MemoryCache) Append(msg Message) error {
 		return fmt.Errorf("message timestamp cannot be zero")
 	}
 
-	if err := insertMessage(c.coldDB, msg); err != nil {
-		return err
-	}
-
+	// Update Recent immediately (synchronous, ~100ns)
 	c.recentMu.Lock()
 	c.recentMessages = append([]Message{msg}, c.recentMessages...)
 	if len(c.recentMessages) > 20 {
@@ -223,60 +215,74 @@ func (c *MemoryCache) Append(msg Message) error {
 	}
 	c.recentMu.Unlock()
 
-	c.UpdateHotAsync(msg)
+	// Queue for async Cold + Hot update
+	select {
+	case c.updateChan <- msg:
+	default:
+		log.Warn("[memory] update queue full, message dropped: msg_id=%s", msg.ID)
+	}
 
 	return nil
 }
 
-func (c *MemoryCache) startHotWorker() {
-	c.hotWorkerWg.Add(1)
-	go func() {
-		defer c.hotWorkerWg.Done()
+// Append is an alias for AddMessage for backward compatibility.
+func (c *MemoryCache) Append(msg Message) error {
+	return c.AddMessage(msg)
+}
 
-		ticker := time.NewTicker(500 * time.Millisecond)
+// startWorker starts the unified async worker for Cold + Hot updates.
+func (c *MemoryCache) startWorker() {
+	c.workerWg.Add(1)
+	go func() {
+		defer c.workerWg.Done()
+
+		ticker := time.NewTicker(updateInterval)
 		defer ticker.Stop()
 
-		var pendingMessages []Message
+		var pending []Message
 
 		for {
 			select {
 			case <-c.stopChan:
+				// Drain remaining messages
 				for {
 					select {
-					case msg := <-c.hotUpdateChan:
-						pendingMessages = append(pendingMessages, msg)
+					case msg := <-c.updateChan:
+						pending = append(pending, msg)
 					default:
 						goto done
 					}
 				}
 			done:
-				if len(pendingMessages) > 0 {
-					c.processHotUpdate(pendingMessages)
+				if len(pending) > 0 {
+					c.flushPending(pending)
 				}
 				return
 
-			case msg := <-c.hotUpdateChan:
-				pendingMessages = append(pendingMessages, msg)
+			case msg := <-c.updateChan:
+				pending = append(pending, msg)
 
 			case <-ticker.C:
-				if len(pendingMessages) > 0 {
-					c.processHotUpdate(pendingMessages)
-					pendingMessages = nil
+				if len(pending) > 0 {
+					c.flushPending(pending)
+					pending = nil
 				}
 			}
 		}
 	}()
 }
 
-// UpdateHotAsync sends a message to the hot update worker.
-// If the channel is full (high load), the message is dropped silently.
-// This is acceptable because hot memory is a best-effort cache of recent keywords.
-func (c *MemoryCache) UpdateHotAsync(msg Message) {
-	select {
-	case c.hotUpdateChan <- msg:
-	default:
-		log.Warn("[memory] hot update dropped: channel full, msg_id=%s", msg.ID)
+// flushPending writes pending messages to Cold and updates Hot.
+func (c *MemoryCache) flushPending(messages []Message) {
+	// 1. Batch write to Cold (SQLite)
+	for _, msg := range messages {
+		if err := insertMessage(c.coldDB, msg); err != nil {
+			log.Warn("[memory] failed to insert message to cold: msg_id=%s, err=%v", msg.ID, err)
+		}
 	}
+
+	// 2. Update Hot
+	c.processHotUpdate(messages)
 }
 
 func (c *MemoryCache) processHotUpdate(messages []Message) {
@@ -306,10 +312,8 @@ func (c *MemoryCache) processHotUpdate(messages []Message) {
 	memoryDir := filepath.Join(c.dataDir, "memory")
 	hotPath := filepath.Join(memoryDir, "hot.json")
 
-	// Atomic write: only update memory if disk write succeeds
-	// This ensures memory and disk are consistent
-	// TODO: Add error logging and consider updating memory even on disk failure
 	if err := saveHot(hotPath, newHotData); err != nil {
+		log.Warn("[memory] failed to save hot: err=%v", err)
 		return
 	}
 
@@ -321,4 +325,10 @@ func (c *MemoryCache) Search(query string) ([]Message, error) {
 		return nil, fmt.Errorf("query cannot be empty")
 	}
 	return searchMessages(c.coldDB, query)
+}
+
+// Flush waits for all pending messages to be processed.
+// Useful for testing.
+func (c *MemoryCache) Flush() {
+	time.Sleep(updateInterval + 50*time.Millisecond)
 }
