@@ -29,4 +29,4 @@ test-all:
 # Clean build artifacts
 clean:
 	go clean ./...
-	rm -f coverage.out
+	rm -f coverage*

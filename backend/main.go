@@ -10,11 +10,9 @@ package main
 // GUARANTEE:
 //   - WebSocket server listening on DefaultPort
 //   - WebSocket endpoint at "/ws"
-//   - Frontend static files served at "/"
+//   - Frontend static files served at "/" (TODO: implement later)
 
 import (
-	"embed"
-	"io/fs"
 	"net/http"
 	"os"
 	"strings"
@@ -24,9 +22,6 @@ import (
 	"gobot/providers"
 	"golang.org/x/net/websocket"
 )
-
-//go:embed frontend
-var staticFiles embed.FS
 
 var (
 	llmProvider providers.LLMProvider
@@ -74,9 +69,11 @@ func main() {
 	// WebSocket endpoint
 	http.Handle("/ws", websocket.Handler(handleWebSocket))
 
-	// Serve embedded frontend files
-	frontendFS, _ := fs.Sub(staticFiles, "frontend")
-	http.Handle("/", http.FileServer(http.FS(frontendFS)))
+	// TODO: Serve frontend files (currently disabled)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("gobot backend - frontend not yet implemented"))
+	})
 
 	log.Info("WebSocket server starting on localhost %s", DefaultPort)
 	log.Info("WebSocket endpoint: ws://127.0.0.1%s/ws", DefaultPort)
