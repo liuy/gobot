@@ -207,31 +207,11 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 		})
 	}
 
-	messages := make([]providers.Message, 0, 8)
-	if rawMessages, ok := req.Params["messages"].([]any); ok {
-		for _, raw := range rawMessages {
-			m, ok := raw.(map[string]any)
-			if !ok {
-				continue
-			}
-			role, _ := m["role"].(string)
-			msgContent, _ := m["content"].(string)
-			if role == "" || msgContent == "" {
-				continue
-			}
-			messages = append(messages, providers.Message{
-				Role:    role,
-				Content: msgContent,
-			})
-		}
+	// TODO: Memory integration - will be replaced by ContextBuilder
+	messages := []providers.Message{
+		{Role: "user", Content: content},
 	}
-	if content != "" {
-		messages = append(messages, providers.Message{
-			Role:    "user",
-			Content: content,
-		})
-	}
-	if len(messages) == 0 {
+	if content == "" {
 		return fmt.Errorf("chat.send missing message")
 	}
 

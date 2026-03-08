@@ -5,7 +5,7 @@
 
 # Build with FTS5 support
 build:
-	CGO_ENABLED=1 go build -tags "fts5 jieba" ./...
+	CGO_ENABLED=1 go build -tags "fts5 jieba" -o gobot .
 
 # Run tests with FTS5 support (skip main package which requires frontend)
 test:
