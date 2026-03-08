@@ -190,3 +190,134 @@ func TestHandleMessage_InputValidation_EdgeCases(t *testing.T) {
 		})
 	}
 }
+
+// TestHandleChatSend_EmptyMessage tests error handling for missing message
+func TestHandleChatSend_EmptyMessage(t *testing.T) {
+	origProvider, origModel := ChatProvider, ChatModel
+	ChatProvider = &stubChatProvider{}
+	ChatModel = "test-model"
+	t.Cleanup(func() {
+		ChatProvider = origProvider
+		ChatModel = origModel
+	})
+
+	conn := newWSConn(t, func(ws *gows.Conn) {
+		req := WSRequest{Type: "req", ID: "test-empty", Method: "chat.send", Params: map[string]any{}}
+		err := HandleChatSend(ws, req)
+		if err == nil {
+			t.Error("expected error for empty message, got nil")
+		}
+		if !strings.Contains(err.Error(), "missing message") {
+			t.Errorf("expected 'missing message' error, got: %v", err)
+		}
+	})
+
+	// Should not receive any message since error is returned
+	var got map[string]any
+	err := gows.JSON.Receive(conn, &got)
+	if err == nil {
+		t.Fatalf("expected connection error, got message: %v", got)
+	}
+}
+
+// TestHandleChatSend_NoProvider tests error handling when ChatProvider not configured
+func TestHandleChatSend_NoProvider(t *testing.T) {
+	origProvider, origModel := ChatProvider, ChatModel
+	ChatProvider = nil
+	ChatModel = ""
+	t.Cleanup(func() {
+		ChatProvider = origProvider
+		ChatModel = origModel
+	})
+
+	conn := newWSConn(t, func(ws *gows.Conn) {
+		req := WSRequest{Type: "req", ID: "test-noprovider", Method: "chat.send", Params: map[string]any{"message": "hello"}}
+		err := HandleChatSend(ws, req)
+		if err == nil {
+			t.Error("expected error for nil provider, got nil")
+		}
+	})
+
+	var got map[string]any
+	err := gows.JSON.Receive(conn, &got)
+	if err == nil {
+		t.Fatalf("expected connection error, got message: %v", got)
+	}
+}
+
+// TestHandleChatHistory_EmptyResult tests that history returns empty array when no messages
+func TestHandleChatHistory_EmptyResult(t *testing.T) {
+	conn := newWSConn(t, func(ws *gows.Conn) {
+		req := WSRequest{Type: "req", ID: "history-1", Method: "chat.history", Params: map[string]any{}}
+		if err := HandleChatHistory(ws, req); err != nil {
+			t.Errorf("HandleChatHistory error = %v", err)
+		}
+	})
+
+	var got map[string]any
+	if err := gows.JSON.Receive(conn, &got); err != nil {
+		t.Fatalf("receive response: %v", err)
+	}
+	if got["type"] != "res" {
+		t.Fatalf("type = %v, want res", got["type"])
+	}
+	if got["ok"] != true {
+		t.Fatalf("ok = %v, want true", got["ok"])
+	}
+	payload, ok := got["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload missing or invalid: %T", got["payload"])
+	}
+	messages, ok := payload["messages"].([]any)
+	if !ok {
+		t.Fatalf("payload.messages invalid: %T", payload["messages"])
+	}
+	if len(messages) != 0 {
+		t.Fatalf("expected empty messages array, got %d items", len(messages))
+	}
+}
+
+// TestConcurrentConnections tests WebSocket server with multiple concurrent connections
+func TestConcurrentConnections(t *testing.T) {
+	origProvider, origModel := ChatProvider, ChatModel
+	ChatProvider = &stubChatProvider{}
+	ChatModel = "test-model"
+	t.Cleanup(func() {
+		ChatProvider = origProvider
+		ChatModel = origModel
+	})
+
+	const numClients = 5
+	done := make(chan bool, numClients)
+
+	for i := 0; i < numClients; i++ {
+		go func(id int) {
+			conn := newWSConn(t, func(ws *gows.Conn) {
+				// Connect
+				req := WSRequest{Type: "req", ID: "conn-" + string(rune('0'+id)), Method: "connect", Params: map[string]any{"auth": map[string]any{"token": ValidToken}}}
+				if err := HandleConnect(ws, req); err != nil {
+					t.Errorf("client %d: HandleConnect error = %v", id, err)
+				}
+			})
+
+			var got map[string]any
+			if err := gows.JSON.Receive(conn, &got); err != nil {
+				t.Errorf("client %d: receive error = %v", id, err)
+			} else if got["ok"] != true {
+				t.Errorf("client %d: expected ok=true, got %v", id, got["ok"])
+			}
+			done <- true
+		}(i)
+	}
+
+	// Wait for all clients with timeout
+	timeout := time.After(5 * time.Second)
+	for i := 0; i < numClients; i++ {
+		select {
+		case <-done:
+			// OK
+		case <-timeout:
+			t.Fatal("timeout waiting for concurrent clients")
+		}
+	}
+}
