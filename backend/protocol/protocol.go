@@ -236,65 +236,64 @@ func HandleChatSend(conn *websocket.Conn, req WSRequest) error {
 	}
 
 	// Use streaming to get real-time thinking and content
-	var finalContent string
-	var finalReasoning string
-	var err error
-
-	err = ChatProvider.ChatStream(context.Background(), messages, ChatModel, nil,
-		func(chunk *providers.LLMResponse) error {
-			// Handle reasoning/thinking stream
-			if chunk.ReasoningContent != "" {
-				// First chunk - send newBlock event
-				if finalReasoning == "" {
-					if err := websocket.JSON.Send(conn, WSEvent{
-						Type:  "event",
-						Event: "agent",
-						Payload: map[string]any{
-							"runId":      runId,
-							"sessionKey": sessionKey,
-							"stream":     "reasoning",
-							"data":       map[string]any{"newBlock": true},
-							"ts":         time.Now().UnixMilli(),
-						},
-					}); err != nil {
-						return err
-					}
-				}
-				finalReasoning += chunk.ReasoningContent
-				if err := sendAgent("reasoning", chunk.ReasoningContent); err != nil {
-					return err
-				}
-			}
-
-			// Handle content stream
-			if chunk.Content != "" {
-				// First chunk - send newBlock event
-				if finalContent == "" {
-					if err := websocket.JSON.Send(conn, WSEvent{
-						Type:  "event",
-						Event: "agent",
-						Payload: map[string]any{
-							"runId":      runId,
-							"sessionKey": sessionKey,
-							"stream":     "content",
-							"data":       map[string]any{"newBlock": true},
-							"ts":         time.Now().UnixMilli(),
-						},
-					}); err != nil {
-						return err
-					}
-				}
-				finalContent += chunk.Content
-				if err := sendAgent("content", chunk.Content); err != nil {
-					return err
-				}
-			}
-
-			return nil
-		})
-
+	ch, err := ChatProvider.ChatStream(context.Background(), messages, ChatModel, nil)
 	if err != nil {
 		return err
+	}
+
+	var finalContent string
+	var finalReasoning string
+	sentReasoningBlock := false
+	sentContentBlock := false
+
+	for chunk := range ch {
+		// Handle reasoning/thinking stream
+		if chunk.Thinking != "" {
+			if !sentReasoningBlock {
+				if err := websocket.JSON.Send(conn, WSEvent{
+					Type:  "event",
+					Event: "agent",
+					Payload: map[string]any{
+						"runId":      runId,
+						"sessionKey": sessionKey,
+						"stream":     "reasoning",
+						"data":       map[string]any{"newBlock": true},
+						"ts":         time.Now().UnixMilli(),
+					},
+				}); err != nil {
+					return err
+				}
+				sentReasoningBlock = true
+			}
+			finalReasoning += chunk.Thinking
+			if err := sendAgent("reasoning", chunk.Thinking); err != nil {
+				return err
+			}
+		}
+
+		// Handle content stream
+		if chunk.Content != "" {
+			if !sentContentBlock {
+				if err := websocket.JSON.Send(conn, WSEvent{
+					Type:  "event",
+					Event: "agent",
+					Payload: map[string]any{
+						"runId":      runId,
+						"sessionKey": sessionKey,
+						"stream":     "content",
+						"data":       map[string]any{"newBlock": true},
+						"ts":         time.Now().UnixMilli(),
+					},
+				}); err != nil {
+					return err
+				}
+				sentContentBlock = true
+			}
+			finalContent += chunk.Content
+			if err := sendAgent("content", chunk.Content); err != nil {
+				return err
+			}
+		}
 	}
 
 	return websocket.JSON.Send(conn, WSEvent{

@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"gobot/types"
 )
 
 type HTTPProvider struct {
@@ -138,115 +140,85 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, model strin
 	return out, nil
 }
 
-func (p *HTTPProvider) ChatStream(ctx context.Context, messages []Message, model string, params map[string]any, handler StreamHandler) error {
-	if handler == nil {
-		return fmt.Errorf("%w: nil stream handler", ErrAPIError)
-	}
+func (p *HTTPProvider) ChatStream(ctx context.Context, messages []Message, model string, params map[string]any) (<-chan types.StreamChunk, error) {
+	ch := make(chan types.StreamChunk, 10)
+
 	resp, err := p.sendChatRequest(ctx, messages, model, params, true)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer resp.Body.Close()
 
 	if err := mapHTTPStatusError(resp); err != nil {
-		return err
+		resp.Body.Close()
+		return nil, err
 	}
 
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 64*1024), 2*1024*1024)
+	go func() {
+		defer close(ch)
+		defer resp.Body.Close()
 
-	var eventData []string
-	flush := func() error {
-		if len(eventData) == 0 {
-			return nil
-		}
-		payload := strings.Join(eventData, "\n")
-		eventData = nil
-		if payload == "[DONE]" {
-			return handler(&LLMResponse{IsDone: true})
-		}
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 64*1024), 2*1024*1024)
 
-		var rawChunk map[string]any
-		if err := json.Unmarshal([]byte(payload), &rawChunk); err != nil {
-			return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
-		}
-
-		var chunk struct {
-			Choices []struct {
-				Delta struct {
-					Content          string `json:"content"`
-					Thinking         string `json:"thinking"`
-					ReasoningContent string `json:"reasoning_content"`
-					ToolCalls        []struct {
-						ID       string `json:"id"`
-						Type     string `json:"type"`
-						Function struct {
-							Name      string `json:"name"`
-							Arguments string `json:"arguments"`
-						} `json:"function"`
-					} `json:"tool_calls"`
-				} `json:"delta"`
-				FinishReason string `json:"finish_reason"`
-			} `json:"choices"`
-		}
-		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
-			return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
-		}
-		for _, c := range chunk.Choices {
-			reasoning := c.Delta.Thinking + c.Delta.ReasoningContent
-			if reasoning == "" && p.extractReasoning != nil {
-				reasoning = p.extractReasoning(rawChunk)
+		var eventData []string
+		flush := func() {
+			if len(eventData) == 0 {
+				return
 			}
-			out := &LLMResponse{
-				Content:          c.Delta.Content,
-				ReasoningContent: reasoning,
-				FinishReason:     c.FinishReason,
-				IsStreaming:      true,
+			payload := strings.Join(eventData, "\n")
+			eventData = nil
+			if payload == "[DONE]" {
+				ch <- types.StreamChunk{IsDone: true}
+				return
 			}
-			for _, tc := range c.Delta.ToolCalls {
-				call := ToolCall{
-					ID:   tc.ID,
-					Type: tc.Type,
-					Function: &FunctionCall{
-						Name:      tc.Function.Name,
-						Arguments: tc.Function.Arguments,
-					},
-					Name:      tc.Function.Name,
-					Arguments: map[string]any{},
+
+			var rawChunk map[string]any
+			if err := json.Unmarshal([]byte(payload), &rawChunk); err != nil {
+				return
+			}
+
+			var chunk struct {
+				Choices []struct {
+					Delta struct {
+						Content          string `json:"content"`
+						Thinking         string `json:"thinking"`
+						ReasoningContent string `json:"reasoning_content"`
+					} `json:"delta"`
+					FinishReason string `json:"finish_reason"`
+				} `json:"choices"`
+			}
+			if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+				return
+			}
+			for _, c := range chunk.Choices {
+				reasoning := c.Delta.Thinking + c.Delta.ReasoningContent
+				if reasoning == "" && p.extractReasoning != nil {
+					reasoning = p.extractReasoning(rawChunk)
 				}
-				if strings.TrimSpace(tc.Function.Arguments) != "" {
-					_ = json.Unmarshal([]byte(tc.Function.Arguments), &call.Arguments)
+				ch <- types.StreamChunk{
+					Content:  c.Delta.Content,
+					Thinking: reasoning,
+					IsDone:   c.FinishReason != "",
 				}
-				out.ToolCalls = append(out.ToolCalls, call)
-			}
-			if err := handler(out); err != nil {
-				return err
 			}
 		}
-		return nil
-	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			if err := flush(); err != nil {
-				return err
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				flush()
+				continue
 			}
-			continue
+			if strings.HasPrefix(line, "data:") {
+				eventData = append(eventData, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+			}
 		}
-		if strings.HasPrefix(line, "data:") {
-			eventData = append(eventData, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+		if len(eventData) > 0 {
+			flush()
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("%w: %v", ErrNetworkError, err)
-	}
-	if len(eventData) > 0 {
-		if err := flush(); err != nil {
-			return err
-		}
-	}
-	return nil
+	}()
+
+	return ch, nil
 }
 
 func (p *HTTPProvider) GetDefaultModel() string {

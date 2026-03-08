@@ -5,6 +5,8 @@
 // =============================================================================
 //
 // backend/
+// ├── types/
+// │   └── types.go          # Shared types (StreamChunk)
 // ├── providers/
 // │   ├── spec.md            # This file
 // │   ├── provider.go        # Interfaces, types, factory, registry
@@ -89,6 +91,15 @@ func (d *DefaultHTTPClient) Do(req *http.Request) (*http.Response, error) {
 
 // IMPORTANT: All structs that interact with JSON APIs MUST include JSON tags.
 // Use standard lowercase/underscore naming (e.g., "reasoning_content", not "ReasoningContent").
+
+// StreamChunk is defined in types/types.go and shared across packages:
+//   type StreamChunk struct {
+//       Content  string // Normal content
+//       Thinking string // Thinking/reasoning content
+//       IsDone   bool   // Stream finished
+//   }
+//
+// This type is used by LLMProvider.ChatStream return channel.
 
 type Message struct {
 	Role             string `json:"role"`
@@ -178,11 +189,17 @@ func RegisterProvider(protocol string, builder ProviderBuilder) {
 
 type LLMProvider interface {
 	Chat(ctx context.Context, messages []Message, model string, params map[string]any) (*LLMResponse, error)
-	ChatStream(ctx context.Context, messages []Message, model string, params map[string]any, handler StreamHandler) error
+	ChatStream(ctx context.Context, messages []Message, model string, params map[string]any) (<-chan types.StreamChunk, error)
 	GetDefaultModel() string
 }
 
-type StreamHandler func(chunk *LLMResponse) error
+// Note: StreamChunk is defined in types/types.go, not here.
+// It is a public type shared across packages:
+//   type StreamChunk struct {
+//       Content  string  // Normal content
+//       Thinking string  // Thinking/reasoning content
+//       IsDone   bool    // Stream finished
+//   }
 
 // --- Factory Functions ---
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"gobot/types"
 )
 
 type stubProvider struct{}
@@ -12,8 +14,10 @@ func (s *stubProvider) Chat(context.Context, []Message, string, map[string]any) 
 	return &LLMResponse{Content: "ok"}, nil
 }
 
-func (s *stubProvider) ChatStream(context.Context, []Message, string, map[string]any, StreamHandler) error {
-	return nil
+func (s *stubProvider) ChatStream(context.Context, []Message, string, map[string]any) (<-chan types.StreamChunk, error) {
+	ch := make(chan types.StreamChunk)
+	close(ch)
+	return ch, nil
 }
 
 func (s *stubProvider) GetDefaultModel() string { return "" }

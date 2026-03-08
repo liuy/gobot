@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gobot/providers"
+	"gobot/types"
 	"golang.org/x/net/websocket"
 )
 
@@ -17,11 +18,15 @@ func (s *stubChatProvider) Chat(ctx context.Context, messages []providers.Messag
 	return &providers.LLMResponse{ReasoningContent: "thinking", Content: "ok"}, nil
 }
 
-func (s *stubChatProvider) ChatStream(ctx context.Context, messages []providers.Message, model string, options map[string]any, handler providers.StreamHandler) error {
-	handler(&providers.LLMResponse{ReasoningContent: "thinking", IsStreaming: true})
-	handler(&providers.LLMResponse{Content: "ok", IsStreaming: true})
-	handler(&providers.LLMResponse{IsDone: true})
-	return nil
+func (s *stubChatProvider) ChatStream(ctx context.Context, messages []providers.Message, model string, options map[string]any) (<-chan types.StreamChunk, error) {
+	ch := make(chan types.StreamChunk, 3)
+	go func() {
+		ch <- types.StreamChunk{Thinking: "thinking"}
+		ch <- types.StreamChunk{Content: "ok"}
+		ch <- types.StreamChunk{IsDone: true}
+		close(ch)
+	}()
+	return ch, nil
 }
 
 func (s *stubChatProvider) GetDefaultModel() string { return "" }

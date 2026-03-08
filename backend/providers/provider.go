@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"gobot/types"
 )
 
 var (
@@ -110,11 +112,9 @@ func RegisterProvider(protocol string, builder ProviderBuilder) {
 
 type LLMProvider interface {
 	Chat(ctx context.Context, messages []Message, model string, params map[string]any) (*LLMResponse, error)
-	ChatStream(ctx context.Context, messages []Message, model string, params map[string]any, handler StreamHandler) error
+	ChatStream(ctx context.Context, messages []Message, model string, params map[string]any) (<-chan types.StreamChunk, error)
 	GetDefaultModel() string
 }
-
-type StreamHandler func(chunk *LLMResponse) error
 
 func CreateProvider(cfg *ModelConfig) (LLMProvider, string, error) {
 	if cfg == nil {
