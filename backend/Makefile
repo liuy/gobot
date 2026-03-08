@@ -16,7 +16,7 @@ test-race:
 	CGO_ENABLED=1 go test -tags "fts5 jieba" -race -v ./channel ./memory ./providers ./log
 
 # Run tests with coverage report
-coverage:
+cover:
 	CGO_ENABLED=1 go test -tags "fts5 jieba" -coverprofile=coverage.out ./channel ./memory ./providers ./log
 	go tool cover -func=coverage.out
 	@echo ""
