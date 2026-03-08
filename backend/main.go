@@ -17,11 +17,14 @@ import (
 	"os"
 	"strings"
 
+	"gobot/channel"
 	"gobot/log"
-	"gobot/protocol"
 	"gobot/providers"
-	"golang.org/x/net/websocket"
+
+	gows "golang.org/x/net/websocket"
 )
+
+// wschannel is the channel/websocket package
 
 var (
 	llmProvider providers.LLMProvider
@@ -63,11 +66,11 @@ func main() {
 	if err != nil {
 		log.Fatal("CreateProvider failed: %v", err)
 	}
-	protocol.ChatProvider = llmProvider
-	protocol.ChatModel = llmModel
+	channel.ChatProvider = llmProvider
+	channel.ChatModel = llmModel
 
 	// WebSocket endpoint
-	http.Handle("/ws", websocket.Handler(handleWebSocket))
+	http.Handle("/ws", gows.Handler(handleWebSocket))
 
 	// TODO: Serve frontend files (currently disabled)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -91,15 +94,15 @@ func main() {
 //   - Case error: logs error message and closes WebSocket
 //
 // INTENT:
-func handleWebSocket(ws *websocket.Conn) {
-	if err := protocol.SendConnectChallenge(ws); err != nil {
+func handleWebSocket(ws *gows.Conn) {
+	if err := channel.SendConnectChallenge(ws); err != nil {
 		log.Error("SendConnectChallenge: %v", err)
 		_ = ws.Close()
 		return
 	}
 	for {
-		var req protocol.WSRequest
-		if err := websocket.JSON.Receive(ws, &req); err != nil {
+		var req channel.WSRequest
+		if err := gows.JSON.Receive(ws, &req); err != nil {
 			if err.Error() == "EOF" {
 				log.Info("Client disconnected")
 			} else {
@@ -108,7 +111,7 @@ func handleWebSocket(ws *websocket.Conn) {
 			_ = ws.Close()
 			return
 		}
-		if err := protocol.HandleMessage(ws, req); err != nil {
+		if err := channel.HandleMessage(ws, req); err != nil {
 			log.Error("HandleMessage: %v", err)
 			_ = ws.Close()
 			return

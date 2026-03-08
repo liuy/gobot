@@ -1,4 +1,4 @@
-package protocol
+package channel
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 
 	"gobot/providers"
 	"gobot/types"
-	"golang.org/x/net/websocket"
+	gows "golang.org/x/net/websocket"
 )
 
 type stubChatProvider struct{}
@@ -31,13 +31,13 @@ func (s *stubChatProvider) ChatStream(ctx context.Context, messages []providers.
 
 func (s *stubChatProvider) GetDefaultModel() string { return "" }
 
-func newWSConn(t *testing.T, fn func(*websocket.Conn)) *websocket.Conn {
+func newWSConn(t *testing.T, fn func(*gows.Conn)) *gows.Conn {
 	t.Helper()
-	srv := httptest.NewServer(websocket.Handler(fn))
+	srv := httptest.NewServer(gows.Handler(fn))
 	t.Cleanup(srv.Close)
 
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
-	conn, err := websocket.Dial(wsURL, "", "http://localhost/")
+	conn, err := gows.Dial(wsURL, "", "http://localhost/")
 	if err != nil {
 		t.Fatalf("dial websocket: %v", err)
 	}
@@ -47,14 +47,14 @@ func newWSConn(t *testing.T, fn func(*websocket.Conn)) *websocket.Conn {
 }
 
 func TestSendConnectChallenge_POST(t *testing.T) {
-	conn := newWSConn(t, func(ws *websocket.Conn) {
+	conn := newWSConn(t, func(ws *gows.Conn) {
 		if err := SendConnectChallenge(ws); err != nil {
 			t.Errorf("SendConnectChallenge error = %v", err)
 		}
 	})
 
 	var got map[string]any
-	if err := websocket.JSON.Receive(conn, &got); err != nil {
+	if err := gows.JSON.Receive(conn, &got); err != nil {
 		t.Fatalf("receive challenge: %v", err)
 	}
 	if got["type"] != "event" {
@@ -76,7 +76,7 @@ func TestSendConnectChallenge_POST(t *testing.T) {
 }
 
 func TestHandleConnect_ValidToken_POST(t *testing.T) {
-	conn := newWSConn(t, func(ws *websocket.Conn) {
+	conn := newWSConn(t, func(ws *gows.Conn) {
 		// Use params.auth.token format (OpenClaw Gateway format)
 		req := WSRequest{Type: "req", ID: "1", Method: "connect", Params: map[string]any{"auth": map[string]any{"token": ValidToken}}}
 		if err := HandleConnect(ws, req); err != nil {
@@ -85,7 +85,7 @@ func TestHandleConnect_ValidToken_POST(t *testing.T) {
 	})
 
 	var got map[string]any
-	if err := websocket.JSON.Receive(conn, &got); err != nil {
+	if err := gows.JSON.Receive(conn, &got); err != nil {
 		t.Fatalf("receive connect response: %v", err)
 	}
 	if got["type"] != "res" {
@@ -110,13 +110,13 @@ func TestHandleConnect_ValidToken_POST(t *testing.T) {
 }
 
 func TestHandleConnect_InvalidToken_POST(t *testing.T) {
-	conn := newWSConn(t, func(ws *websocket.Conn) {
+	conn := newWSConn(t, func(ws *gows.Conn) {
 		req := WSRequest{Type: "req", ID: "2", Method: "connect", Params: map[string]any{"auth": map[string]any{"token": "bad"}}}
 		_ = HandleConnect(ws, req) // returns error after sending connect.error
 	})
 
 	var got map[string]any
-	if err := websocket.JSON.Receive(conn, &got); err != nil {
+	if err := gows.JSON.Receive(conn, &got); err != nil {
 		t.Fatalf("receive connect error event: %v", err)
 	}
 	if got["type"] != "event" {
@@ -136,7 +136,7 @@ func TestHandleChatSend_POST(t *testing.T) {
 		ChatModel = origModel
 	})
 
-	conn := newWSConn(t, func(ws *websocket.Conn) {
+	conn := newWSConn(t, func(ws *gows.Conn) {
 		// Use params.message and params.sessionKey format
 		req := WSRequest{Type: "req", ID: "3", Method: "chat.send", Params: map[string]any{"message": "hello", "sessionKey": "main"}}
 		if err := HandleChatSend(ws, req); err != nil {
@@ -148,7 +148,7 @@ func TestHandleChatSend_POST(t *testing.T) {
 	events := []string{}
 	for {
 		var got map[string]any
-		if err := websocket.JSON.Receive(conn, &got); err != nil {
+		if err := gows.JSON.Receive(conn, &got); err != nil {
 			break // EOF or no more messages
 		}
 		if got["type"] == "event" && got["event"] == "agent" {
@@ -182,11 +182,11 @@ func TestHandleMessage_InputValidation_EdgeCases(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.ID, func(t *testing.T) {
-			conn := newWSConn(t, func(ws *websocket.Conn) {
+			conn := newWSConn(t, func(ws *gows.Conn) {
 				_ = HandleMessage(ws, tc)
 			})
 			var got map[string]any
-			_ = websocket.JSON.Receive(conn, &got)
+			_ = gows.JSON.Receive(conn, &got)
 		})
 	}
 }

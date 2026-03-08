@@ -1,6 +1,6 @@
-package protocol
+package channel
 
-// MODULE SPEC: protocol
+// MODULE SPEC: channel/websocket
 //
 // RELY:
 //   - golang.org/x/net/websocket for WebSocket communication
@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"gobot/providers"
-	"golang.org/x/net/websocket"
+	gows "golang.org/x/net/websocket"
 )
 
 // Type Definitions
@@ -115,8 +115,8 @@ var (
 //
 // INTENT:
 //   - Initiate connection handshake by sending challenge to client
-func SendConnectChallenge(conn *websocket.Conn) error {
-	return websocket.JSON.Send(conn, WSEvent{
+func SendConnectChallenge(conn *gows.Conn) error {
+	return gows.JSON.Send(conn, WSEvent{
 		Type:  "event",
 		Event: "connect.challenge",
 		Payload: ConnectChallengePayload{
@@ -140,11 +140,11 @@ func SendConnectChallenge(conn *websocket.Conn) error {
 //
 // INTENT:
 //   - Authenticate client connection via token validation
-func HandleConnect(conn *websocket.Conn, req WSRequest) error {
+func HandleConnect(conn *gows.Conn, req WSRequest) error {
 	auth, _ := req.Params["auth"].(map[string]any)
 	token, _ := auth["token"].(string)
 	if token == ValidToken {
-		return websocket.JSON.Send(conn, WSResponse{
+		return gows.JSON.Send(conn, WSResponse{
 			Type: "res",
 			ID:   req.ID,
 			OK:   true,
@@ -154,7 +154,7 @@ func HandleConnect(conn *websocket.Conn, req WSRequest) error {
 			},
 		})
 	}
-	_ = websocket.JSON.Send(conn, WSEvent{
+	_ = gows.JSON.Send(conn, WSEvent{
 		Type:  "event",
 		Event: "connect.error",
 		Payload: ConnectErrorPayload{
@@ -182,7 +182,7 @@ func HandleConnect(conn *websocket.Conn, req WSRequest) error {
 //
 // INTENT:
 //   - Run LLM chat via configured provider and stream reasoning/content to client
-func HandleChatSend(conn *websocket.Conn, req WSRequest) error {
+func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 	content, _ := req.Params["message"].(string)
 	sessionKey, _ := req.Params["sessionKey"].(string)
 	runId := req.ID
@@ -194,7 +194,7 @@ func HandleChatSend(conn *websocket.Conn, req WSRequest) error {
 	}
 
 	sendAgent := func(stream string, delta string) error {
-		return websocket.JSON.Send(conn, WSEvent{
+		return gows.JSON.Send(conn, WSEvent{
 			Type:  "event",
 			Event: "agent",
 			Payload: map[string]any{
@@ -250,7 +250,7 @@ func HandleChatSend(conn *websocket.Conn, req WSRequest) error {
 		// Handle reasoning/thinking stream
 		if chunk.Thinking != "" {
 			if !sentReasoningBlock {
-				if err := websocket.JSON.Send(conn, WSEvent{
+				if err := gows.JSON.Send(conn, WSEvent{
 					Type:  "event",
 					Event: "agent",
 					Payload: map[string]any{
@@ -274,7 +274,7 @@ func HandleChatSend(conn *websocket.Conn, req WSRequest) error {
 		// Handle content stream
 		if chunk.Content != "" {
 			if !sentContentBlock {
-				if err := websocket.JSON.Send(conn, WSEvent{
+				if err := gows.JSON.Send(conn, WSEvent{
 					Type:  "event",
 					Event: "agent",
 					Payload: map[string]any{
@@ -296,7 +296,7 @@ func HandleChatSend(conn *websocket.Conn, req WSRequest) error {
 		}
 	}
 
-	return websocket.JSON.Send(conn, WSEvent{
+	return gows.JSON.Send(conn, WSEvent{
 		Type:  "event",
 		Event: "chat",
 		Payload: map[string]any{
@@ -324,8 +324,8 @@ func HandleChatSend(conn *websocket.Conn, req WSRequest) error {
 //
 // INTENT:
 //   - Return empty chat history (demo mode, no persistence)
-func HandleChatHistory(conn *websocket.Conn, req WSRequest) error {
-	return websocket.JSON.Send(conn, WSResponse{
+func HandleChatHistory(conn *gows.Conn, req WSRequest) error {
+	return gows.JSON.Send(conn, WSResponse{
 		Type: "res",
 		ID:   req.ID,
 		OK:   true,
@@ -347,8 +347,8 @@ func HandleChatHistory(conn *websocket.Conn, req WSRequest) error {
 //
 // INTENT:
 //   - Return empty server commands list (demo mode)
-func HandleServerCommands(conn *websocket.Conn, req WSRequest) error {
-	return websocket.JSON.Send(conn, WSResponse{
+func HandleServerCommands(conn *gows.Conn, req WSRequest) error {
+	return gows.JSON.Send(conn, WSResponse{
 		Type: "res",
 		ID:   req.ID,
 		OK:   true,
@@ -370,8 +370,8 @@ func HandleServerCommands(conn *websocket.Conn, req WSRequest) error {
 //
 // INTENT:
 //   - Return empty sessions list (demo mode, no session management)
-func HandleSessionsList(conn *websocket.Conn, req WSRequest) error {
-	return websocket.JSON.Send(conn, WSResponse{
+func HandleSessionsList(conn *gows.Conn, req WSRequest) error {
+	return gows.JSON.Send(conn, WSResponse{
 		Type: "res",
 		ID:   req.ID,
 		OK:   true,
@@ -398,7 +398,7 @@ func HandleSessionsList(conn *websocket.Conn, req WSRequest) error {
 //
 // INTENT:
 //   - Route incoming WebSocket requests to appropriate handlers
-func HandleMessage(conn *websocket.Conn, req WSRequest) error {
+func HandleMessage(conn *gows.Conn, req WSRequest) error {
 	switch req.Method {
 	case "connect":
 		return HandleConnect(conn, req)
@@ -411,7 +411,7 @@ func HandleMessage(conn *websocket.Conn, req WSRequest) error {
 	case "sessions.list":
 		return HandleSessionsList(conn, req)
 	default:
-		return websocket.JSON.Send(conn, WSResponse{
+		return gows.JSON.Send(conn, WSResponse{
 			Type:  "res",
 			ID:    req.ID,
 			OK:    false,
