@@ -145,14 +145,14 @@
 // --- Message Model ---
 
 type Message struct {
-    ID          string    `json:"id"`
-    Content     string    `json:"content"`
-    Timestamp   time.Time `json:"timestamp"`
-    HumanIDs    []string  `json:"humanIDs"`
-    Channel     string    `json:"channel"`     // "discord", "telegram", "web"
-    ChatID      string    `json:"chatID"`      // Group/Private chat ID
-    IsFromHuman bool      `json:"isFromHuman"`
-    Type        string    `json:"type,omitempty"` // "text", "location"
+    ID        string    `json:"id"`
+    Content   string    `json:"content"`
+    Timestamp time.Time `json:"timestamp"`
+    HumanIDs  []string  `json:"humanIDs"`
+    Channel   string    `json:"channel"`   // "discord", "telegram", "web"
+    ChatID    string    `json:"chatID"`    // Group/Private chat ID
+    Role      string    `json:"role"`      // "user", "assistant", "system"
+    Type      string    `json:"type,omitempty"` // "text", "location"
 }
 
 // TIMESTAMP RULE: All timestamps are stored in UTC

@@ -32,7 +32,7 @@ func initColdDB(dbPath string) (*sql.DB, error) {
 		human_ids TEXT,
 		channel TEXT,
 		chat_id TEXT,
-		is_from_human INTEGER,
+		role TEXT,
 		type TEXT
 	);
 	
@@ -77,17 +77,17 @@ func insertMessage(db *sql.DB, msg Message) error {
 	contentTokens := tokenizeChinese(msg.Content)
 
 	_, err = db.Exec(`
-		INSERT OR IGNORE INTO messages (id, content, content_tokens, timestamp, human_ids, channel, chat_id, is_from_human, type)
+		INSERT OR IGNORE INTO messages (id, content, content_tokens, timestamp, human_ids, channel, chat_id, role, type)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, msg.ID, msg.Content, contentTokens, msg.Timestamp.Format("2006-01-02 15:04:05"), string(humanIDsJSON),
-		msg.Channel, msg.ChatID, msg.IsFromHuman, msg.Type)
+		msg.Channel, msg.ChatID, msg.Role, msg.Type)
 
 	return err
 }
 
 func getRecentMessages(db *sql.DB, limit int) ([]Message, error) {
 	rows, err := db.Query(`
-		SELECT id, content, timestamp, human_ids, channel, chat_id, is_from_human, type
+		SELECT id, content, timestamp, human_ids, channel, chat_id, role, type
 		FROM messages
 		ORDER BY timestamp DESC
 		LIMIT ?
@@ -102,15 +102,12 @@ func getRecentMessages(db *sql.DB, limit int) ([]Message, error) {
 		var msg Message
 		var humanIDsJSON string
 		var timestampStr string
-		var isFromHuman int
 
 		err := rows.Scan(&msg.ID, &msg.Content, &timestampStr, &humanIDsJSON,
-			&msg.Channel, &msg.ChatID, &isFromHuman, &msg.Type)
+			&msg.Channel, &msg.ChatID, &msg.Role, &msg.Type)
 		if err != nil {
 			return nil, err
 		}
-
-		msg.IsFromHuman = isFromHuman == 1
 
 		if err := json.Unmarshal([]byte(humanIDsJSON), &msg.HumanIDs); err != nil {
 			msg.HumanIDs = []string{}
@@ -132,7 +129,7 @@ func searchMessages(db *sql.DB, query string) ([]Message, error) {
 	sanitizedQuery := sanitizeFTS5Query(tokenizedQuery)
 
 	rows, err := db.Query(`
-		SELECT m.id, m.content, m.timestamp, m.human_ids, m.channel, m.chat_id, m.is_from_human, m.type
+		SELECT m.id, m.content, m.timestamp, m.human_ids, m.channel, m.chat_id, m.role, m.type
 		FROM messages m
 		JOIN messages_fts fts ON m.rowid = fts.rowid
 		WHERE messages_fts MATCH ?
@@ -149,15 +146,12 @@ func searchMessages(db *sql.DB, query string) ([]Message, error) {
 		var msg Message
 		var humanIDsJSON string
 		var timestampStr string
-		var isFromHuman int
 
 		err := rows.Scan(&msg.ID, &msg.Content, &timestampStr, &humanIDsJSON,
-			&msg.Channel, &msg.ChatID, &isFromHuman, &msg.Type)
+			&msg.Channel, &msg.ChatID, &msg.Role, &msg.Type)
 		if err != nil {
 			return nil, err
 		}
-
-		msg.IsFromHuman = isFromHuman == 1
 
 		if err := json.Unmarshal([]byte(humanIDsJSON), &msg.HumanIDs); err != nil {
 			msg.HumanIDs = []string{}

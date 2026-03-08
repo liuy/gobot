@@ -64,14 +64,14 @@ func TestInsertMessage_BasicInsert(t *testing.T) {
 	defer db.Close()
 
 	msg := Message{
-		ID:          "msg-001",
-		Content:     "Test message content",
-		Timestamp:   time.Now(),
-		HumanIDs:    []string{"user-1", "user-2"},
-		Channel:     "discord",
-		ChatID:      "chat-123",
-		IsFromHuman: true,
-		Type:        "text",
+		ID:        "msg-001",
+		Content:   "Test message content",
+		Timestamp: time.Now(),
+		HumanIDs:  []string{"user-1", "user-2"},
+		Channel:   "discord",
+		ChatID:    "chat-123",
+		Role:      "user",
+		Type:      "text",
 	}
 
 	err = insertMessage(db, msg)
