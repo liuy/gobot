@@ -9,15 +9,15 @@ build:
 
 # Run tests with FTS5 support (skip main package which requires frontend)
 test:
-	CGO_ENABLED=1 go test -tags "fts5 jieba" -v ./memory ./protocol ./providers ./log
+	CGO_ENABLED=1 go test -tags "fts5 jieba" -v ./channel ./memory ./providers ./log
 
 # Run tests with race detector
 test-race:
-	CGO_ENABLED=1 go test -tags "fts5 jieba" -race -v ./memory ./protocol ./providers ./log
+	CGO_ENABLED=1 go test -tags "fts5 jieba" -race -v ./channel ./memory ./providers ./log
 
 # Run tests with coverage report
 coverage:
-	CGO_ENABLED=1 go test -tags "fts5 jieba" -coverprofile=coverage.out ./memory ./protocol ./providers ./log
+	CGO_ENABLED=1 go test -tags "fts5 jieba" -coverprofile=coverage.out ./channel ./memory ./providers ./log
 	go tool cover -func=coverage.out
 	@echo ""
 	@echo "HTML report: run 'go tool cover -html=coverage.out'"
