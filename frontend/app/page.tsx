@@ -30,6 +30,7 @@ import { ChatViewport } from "@/components/chat/ChatViewport";
 import { ChatComposerBar } from "@/components/chat/ChatComposerBar";
 
 import { useThinkingState } from "@/hooks/useThinkingState";
+import { useRunDurationTimer } from "@/hooks/useRunDurationTimer";
 import { PIN_LOCK_MS, useScrollManager } from "@/hooks/useScrollManager";
 import { useKeyboardLayout } from "@/hooks/useKeyboardLayout";
 import { useTheme } from "@/hooks/useTheme";
@@ -96,9 +97,24 @@ export default function Home() {
     setAwaitingResponse,
     thinkingStartTime,
     setThinkingStartTime,
-    beginContentArrival,
+    beginContentArrival: baseBeginContentArrival,
     resetThinkingState,
   } = useThinkingState(streamingId, messages, setMessages);
+
+  const {
+    runningDuration,
+    startTimer: startRunTimer,
+    stopTimer: stopRunTimer,
+    resetTimer: resetRunTimer,
+  } = useRunDurationTimer();
+
+  // Wrap beginContentArrival to also start the run duration timer
+  const beginContentArrival = useCallback(() => {
+    baseBeginContentArrival();
+    if (thinkingStartTime) {
+      startRunTimer(thinkingStartTime);
+    }
+  }, [baseBeginContentArrival, thinkingStartTime, startRunTimer]);
 
   const [showSetup, setShowSetup] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -315,6 +331,8 @@ export default function Home() {
     setThinkingStartTime,
     markRunStart,
     markRunEnd,
+    stopRunTimer,
+    resetRunTimer,
     notifyForRun,
     handleUnpinSubagent,
     queuedMessageRef: queuedMessageForRuntimeRef,
@@ -607,6 +625,7 @@ export default function Home() {
         awaitingResponse={awaitingResponse}
         thinkingStartTime={thinkingStartTime}
         thinkingLabel={thinkingLabel}
+        runningDuration={runningDuration}
         quotePopup={quotePopup}
         quotePopupRef={quotePopupRef}
         onAcceptQuote={handleAcceptQuote}

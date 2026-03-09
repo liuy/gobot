@@ -66,6 +66,8 @@ interface UseOpenClawRuntimeOptions extends StreamActions {
   setThinkingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
   markRunStart: () => void;
   markRunEnd: () => number;
+  stopRunTimer: () => number | null;
+  resetRunTimer: () => void;
   notifyForRun: (runId: string | null) => void;
   handleUnpinSubagent: () => void;
   queuedMessageRef: React.RefObject<{ text: string; attachments?: unknown[] } | null>;
@@ -123,6 +125,8 @@ export function useOpenClawRuntime({
   setThinkingStartTime,
   markRunStart,
   markRunEnd,
+  stopRunTimer,
+  resetRunTimer,
   notifyForRun,
   handleUnpinSubagent,
   queuedMessageRef,
@@ -567,6 +571,7 @@ export function useOpenClawRuntime({
       if (phase === "start") {
         const isExternalRun = !activeRunIdRef.current;
         markRunStart();
+        resetRunTimer();
         setIsStreaming(true);
         activeRunIdRef.current = payload.runId;
         thinkTagStateRef.current = { insideThinkTag: false, tagBuffer: "" };
@@ -577,6 +582,7 @@ export function useOpenClawRuntime({
         }
       } else if (phase === "end" || phase === "error") {
         const runDuration = markRunEnd();
+        stopRunTimer();
         applyRunDuration(payload.runId, runDuration);
         if (historyPollRef.current) {
           requestHistory();

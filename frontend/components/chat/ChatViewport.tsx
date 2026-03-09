@@ -47,6 +47,7 @@ interface ChatViewportProps {
   awaitingResponse: boolean;
   thinkingStartTime: number | null;
   thinkingLabel?: string;
+  runningDuration: number | null;
   quotePopup: { x: number; y: number; text: string } | null;
   quotePopupRef: React.RefObject<HTMLButtonElement | null>;
   onAcceptQuote: (text: string) => void;
@@ -79,6 +80,7 @@ export function ChatViewport({
   awaitingResponse,
   thinkingStartTime,
   thinkingLabel,
+  runningDuration,
   quotePopup,
   quotePopupRef,
   onAcceptQuote,
@@ -681,11 +683,11 @@ export function ChatViewport({
                   <div className={`flex items-center gap-1 ${side === "right" ? "justify-end" : "justify-start"}`}>
                     <p className={`text-2xs text-muted-foreground/60 ${side === "right" ? "text-right" : "text-left"}`}>
                       {formatMessageTime(msg.timestamp)}
-                      {msg.role === "assistant" && msg.runDuration && msg.runDuration > 0 && (
-                        <span className="ml-1"><span className="grayscale opacity-50">⌛</span> {formatDuration(msg.runDuration)}</span>
+                      {msg.role === "assistant" && msg.id === streamingId && runningDuration !== null && (
+                        <span className="ml-1"><span className="grayscale opacity-50">⌛</span> {formatDuration(runningDuration)}</span>
                       )}
-                      {msg.role === "assistant" && !msg.runDuration && msg.thinkingDuration && msg.thinkingDuration > 0 && (
-                        <span className="ml-1">&middot; {msg.thinkingDuration}s</span>
+                      {msg.role === "assistant" && msg.id !== streamingId && msg.runDuration && msg.runDuration > 0 && (
+                        <span className="ml-1"><span className="grayscale opacity-50">⌛</span> {formatDuration(msg.runDuration)}</span>
                       )}
                     </p>
                     {showZenTimestampToggle && zenMeta
@@ -704,11 +706,11 @@ export function ChatViewport({
                     {msg.timestamp && (
                       <p className={`text-2xs text-muted-foreground/60 ${side === "right" ? "text-right" : "text-left"}`}>
                         {formatMessageTime(msg.timestamp)}
-                        {msg.role === "assistant" && msg.runDuration && msg.runDuration > 0 && (
-                          <span className="ml-1"><span className="grayscale opacity-50">⌛</span> {formatDuration(msg.runDuration)}</span>
+                        {msg.role === "assistant" && msg.id === streamingId && runningDuration !== null && (
+                          <span className="ml-1"><span className="grayscale opacity-50">⌛</span> {formatDuration(runningDuration)}</span>
                         )}
-                        {msg.role === "assistant" && !msg.runDuration && msg.thinkingDuration && msg.thinkingDuration > 0 && (
-                          <span className="ml-1">&middot; {msg.thinkingDuration}s</span>
+                        {msg.role === "assistant" && msg.id !== streamingId && msg.runDuration && msg.runDuration > 0 && (
+                          <span className="ml-1"><span className="grayscale opacity-50">⌛</span> {formatDuration(msg.runDuration)}</span>
                         )}
                       </p>
                     )}
