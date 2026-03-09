@@ -6,6 +6,7 @@ import { getTextFromContent, getImages, getFiles } from "@/lib/messageUtils";
 import { HEARTBEAT_MARKER, NO_REPLY_MARKER, SYSTEM_PREFIX, SYSTEM_MESSAGE_PREFIX, STOP_REASON_INJECTED, isToolCallPart, SPAWN_TOOL_NAME, hasUnquotedMarker, hasHeartbeatOnOwnLine } from "@/lib/constants";
 import { useExpandablePanel } from "@/hooks/useExpandablePanel";
 import { SlideContent } from "@/components/SlideContent";
+import { ThinkingPill } from "@/components/ThinkingPill";
 import { MarkdownContent } from "@/components/markdown/MarkdownContent";
 import { StreamingText } from "@/components/StreamingText";
 import { ToolCallPill } from "@/components/ToolCallPill";
@@ -209,79 +210,6 @@ function InjectedPill({ text, message, subagentStore }: { text: string; message?
         )}
       </div>
     </div>
-  );
-}
-
-// ── ThinkingPill ─────────────────────────────────────────────────────────────
-
-const THINKING_COLLAPSE_THRESHOLD = 5;
-
-function ThinkingPill({ text }: { text: string }) {
-  const isEmpty = !text.trim();
-  const [mounted, setMounted] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const lineCount = text.split("\n").length;
-  const needsClamp = !isEmpty && lineCount >= THINKING_COLLAPSE_THRESHOLD;
-
-  useEffect(() => {
-    if (mounted) return;
-    const raf = requestAnimationFrame(() => setMounted(true));
-    return () => cancelAnimationFrame(raf);
-  }, [mounted]);
-
-  if (isEmpty) {
-    return (
-      <SlideContent open={mounted}>
-        <p className="text-xs leading-[1.5] text-muted-foreground/50">
-          <span className="inline-flex items-center gap-0.5">
-            <span>Thinking</span>
-            <span className="inline-flex w-4">
-              <span className="animate-[dotFade_1.4s_ease-in-out_infinite]">.</span>
-              <span className="animate-[dotFade_1.4s_ease-in-out_0.2s_infinite]">.</span>
-              <span className="animate-[dotFade_1.4s_ease-in-out_0.4s_infinite]">.</span>
-            </span>
-          </span>
-        </p>
-      </SlideContent>
-    );
-  }
-
-  if (!needsClamp) {
-    return (
-      <SlideContent open={mounted}>
-        <p className="text-xs leading-[1.5] text-muted-foreground/50 whitespace-pre-wrap break-words overflow-hidden">
-          {text}
-        </p>
-      </SlideContent>
-    );
-  }
-
-  const firstLine = text.split("\n")[0];
-
-  return (
-    <SlideContent open={mounted}>
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setExpanded((v) => !v)}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded((v) => !v); } }}
-        className="text-xs leading-[1.5] text-muted-foreground/50 cursor-pointer"
-      >
-        <div className="flex items-center gap-1">
-          <span className="truncate break-words overflow-hidden">{firstLine}</span>
-          <svg
-            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-            className="shrink-0 opacity-60 transition-transform duration-200"
-            style={{ transform: expanded ? "rotate(0deg)" : "rotate(-90deg)" }}
-          >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </div>
-        <SlideContent open={expanded}>
-          <p className="whitespace-pre-wrap break-words overflow-hidden">{text}</p>
-        </SlideContent>
-      </div>
-    </SlideContent>
   );
 }
 
@@ -620,14 +548,19 @@ export function MessageRow({
 
   if (!isUser) {
     if (message.reasoning && !hasThinkingParts) {
-      pushAssistantBlock("reasoning", <ThinkingPill text={message.reasoning} />);
+      pushAssistantBlock("reasoning", <ThinkingPill text={message.reasoning} isStreaming={isStreaming} />);
     }
 
-    if (Array.isArray(message.content)) {
+         if (Array.isArray(message.content)) {
       const contentParts = message.content;
       contentParts.forEach((part, i) => {
         if (part.type === "thinking") {
-          pushAssistantBlock(`thinking-${i}`, <ThinkingPill text={part.thinking || part.text || ""} />);
+          // Check if there are content parts after this thinking part
+          const remainingParts = contentParts.slice(i + 1);
+          const isThinkingComplete = isStreaming && remainingParts.length > 0;
+          // If thinking is complete but content is still streaming, show "✓ Thinking finished."
+          // Otherwise, thinking is still streaming, show scrolling preview with animation
+          pushAssistantBlock(`thinking-${i}`, <ThinkingPill text={part.thinking || part.text || ""} isStreaming={isStreaming} isThinkingComplete={isThinkingComplete} />);
           return;
         }
         if (isToolCallPart(part)) {
@@ -661,7 +594,7 @@ export function MessageRow({
           const showCursor = isStreaming && isLastText && !hasLaterNonText;
 
           if (extractedThinking && !hasThinkingParts && !message.reasoning) {
-            pushAssistantBlock(`text-thinking-${i}`, <ThinkingPill text={extractedThinking} />);
+            pushAssistantBlock(`text-thinking-${i}`, <ThinkingPill text={extractedThinking} isStreaming={isStreaming} />);
           }
           if (cleanText) {
             pushAssistantBlock(
@@ -685,7 +618,7 @@ export function MessageRow({
       const { thinking: extractedThinking, text: rawCleanText } = stripThinkTags(text);
       const cleanText = stripFinalTags(rawCleanText);
       if (extractedThinking && !hasThinkingParts && !message.reasoning) {
-        pushAssistantBlock("fallback-thinking", <ThinkingPill text={extractedThinking} />);
+        pushAssistantBlock("fallback-thinking", <ThinkingPill text={extractedThinking} isStreaming={isStreaming} />);
       }
       if (cleanText) {
         pushAssistantBlock(

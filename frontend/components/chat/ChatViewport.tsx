@@ -75,7 +75,7 @@ export function ChatViewport({
   onPin,
   onUnpin,
   zenMode,
-  isRunActive,
+  isRunActive: _isRunActive,
   awaitingResponse,
   thinkingStartTime,
   thinkingLabel,

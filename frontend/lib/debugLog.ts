@@ -25,7 +25,7 @@ function preview(s: unknown, max = 60): string | undefined {
   return s.length <= max ? s : s.slice(0, max) + "…";
 }
 
-function send(entry: Record<string, unknown>) {
+function send(_entry: Record<string, unknown>) {
   // Disabled - backend /api/log not implemented yet
   // if (process.env.NODE_ENV !== "development") return;
   // // Fire-and-forget — never block UI
