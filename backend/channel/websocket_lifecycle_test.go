@@ -2,6 +2,7 @@ package channel
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -196,5 +197,86 @@ func TestHandleChatSend_EventOrdering(t *testing.T) {
 	if len(eventOrder) > 0 && eventOrder[0] != "lifecycle:start" {
 		t.Errorf("First event = %q, want 'lifecycle:start'", eventOrder[0])
 		t.Log("Frontend expects lifecycle:start to initialize run state")
+	}
+}
+
+// mockErrorProvider simulates LLM failure for testing lifecycle:error
+type mockErrorProvider struct{}
+
+func (m *mockErrorProvider) Chat(ctx context.Context, messages []providers.Message, model string, options map[string]any) (*providers.LLMResponse, error) {
+	return nil, fmt.Errorf("simulated LLM error")
+}
+
+func (m *mockErrorProvider) ChatStream(ctx context.Context, messages []providers.Message, model string, options map[string]any) (<-chan types.StreamChunk, error) {
+	return nil, fmt.Errorf("simulated LLM stream error")
+}
+
+func (m *mockErrorProvider) GetDefaultModel() string { return "test-model" }
+
+// TestHandleChatSend_LifecycleErrorOnError verifies lifecycle:error is sent when LLM fails
+func TestHandleChatSend_LifecycleErrorOnError(t *testing.T) {
+	origProvider, origModel := ChatProvider, ChatModel
+	ChatProvider = &mockErrorProvider{}
+	ChatModel = "test-model"
+	t.Cleanup(func() {
+		ChatProvider = origProvider
+		ChatModel = origModel
+	})
+
+	srv := newWSServer(t, func(ws *gows.Conn) {
+		req := WSRequest{
+			Type:   "req",
+			ID:     "test-error",
+			Method: "chat.send",
+			Params: map[string]any{"message": "test", "sessionKey": "test"},
+		}
+		_ = HandleChatSend(ws, req)
+	})
+	conn := dialWS(t, srv)
+
+	var events []map[string]any
+	for {
+		var got map[string]any
+		if err := gows.JSON.Receive(conn, &got); err != nil {
+			break
+		}
+		events = append(events, got)
+	}
+
+	// Find lifecycle events
+	var lifecyclePhases []string
+	for _, evt := range events {
+		if evt["type"] == "event" && evt["event"] == "agent" {
+			payload, _ := evt["payload"].(map[string]any)
+			if payload["stream"] == "lifecycle" {
+				data, _ := payload["data"].(map[string]any)
+				phase, _ := data["phase"].(string)
+				lifecyclePhases = append(lifecyclePhases, phase)
+			}
+		}
+	}
+
+	t.Logf("Lifecycle phases: %v", lifecyclePhases)
+
+	// Should have start and error
+	if len(lifecyclePhases) < 2 {
+		t.Fatalf("Expected 2 lifecycle events (start + error), got %d", len(lifecyclePhases))
+	}
+	if lifecyclePhases[0] != "start" {
+		t.Errorf("First lifecycle phase = %q, want 'start'", lifecyclePhases[0])
+	}
+	if lifecyclePhases[1] != "error" {
+		t.Errorf("Second lifecycle phase = %q, want 'error'", lifecyclePhases[1])
+	}
+
+	// Verify error message is included
+	lastEvt := events[len(events)-1]
+	payload, _ := lastEvt["payload"].(map[string]any)
+	data, _ := payload["data"].(map[string]any)
+	errMsg, _ := data["error"].(string)
+	if errMsg == "" {
+		t.Error("lifecycle:error missing error message")
+	} else {
+		t.Logf("✓ Error message: %s", errMsg)
 	}
 }

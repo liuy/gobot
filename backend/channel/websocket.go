@@ -215,9 +215,36 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 		return fmt.Errorf("chat.send missing message")
 	}
 
+	// Send lifecycle start event
+	if err := gows.JSON.Send(conn, WSEvent{
+		Type:  "event",
+		Event: "agent",
+		Payload: map[string]any{
+			"runId":      runId,
+			"sessionKey": sessionKey,
+			"stream":     "lifecycle",
+			"data":       map[string]any{"phase": "start", "startedAt": time.Now().UnixMilli()},
+			"ts":         time.Now().UnixMilli(),
+		},
+	}); err != nil {
+		return err
+	}
+
 	// Use streaming to get real-time thinking and content
 	ch, err := ChatProvider.ChatStream(context.Background(), messages, ChatModel, nil)
 	if err != nil {
+		// Send lifecycle error event
+		_ = gows.JSON.Send(conn, WSEvent{
+			Type:  "event",
+			Event: "agent",
+			Payload: map[string]any{
+				"runId":      runId,
+				"sessionKey": sessionKey,
+				"stream":     "lifecycle",
+				"data":       map[string]any{"phase": "error", "error": err.Error(), "endedAt": time.Now().UnixMilli()},
+				"ts":         time.Now().UnixMilli(),
+			},
+		})
 		return err
 	}
 
@@ -274,6 +301,21 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 				return err
 			}
 		}
+	}
+
+	// Send lifecycle end event
+	if err := gows.JSON.Send(conn, WSEvent{
+		Type:  "event",
+		Event: "agent",
+		Payload: map[string]any{
+			"runId":      runId,
+			"sessionKey": sessionKey,
+			"stream":     "lifecycle",
+			"data":       map[string]any{"phase": "end", "endedAt": time.Now().UnixMilli()},
+			"ts":         time.Now().UnixMilli(),
+		},
+	}); err != nil {
+		return err
 	}
 
 	return gows.JSON.Send(conn, WSEvent{
