@@ -10,9 +10,10 @@ export interface ThinkingPillProps {
   text: string;
   isStreaming?: boolean;
   isThinkingComplete?: boolean;
+  duration?: number; // Thinking duration in seconds
 }
 
-export function ThinkingPill({ text, isStreaming, isThinkingComplete }: ThinkingPillProps) {
+export function ThinkingPill({ text, isStreaming, isThinkingComplete, duration }: ThinkingPillProps) {
   const isEmpty = !text.trim();
   const [mounted, setMounted] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -56,14 +57,16 @@ export function ThinkingPill({ text, isStreaming, isThinkingComplete }: Thinking
   const getTitle = () => {
     // If thinking is complete (has content after it), show "✓ Thinking finished."
     if (isThinkingComplete || (!isStreaming && !isEmpty)) {
-      return "✓ Thinking finished.";
+      const durationText = duration && duration > 0 ? ` (${duration}s)` : "";
+      return `✓ Thinking finished.${durationText}`;
     }
     // Still streaming: show scrolling preview
     if (isStreaming) {
       const lastN = text.slice(-THINKING_PREVIEW_CHARS);
       return text.length > THINKING_PREVIEW_CHARS ? `…${lastN}` : lastN;
     }
-    return "✓ Thinking finished.";
+    const durationText = duration && duration > 0 ? ` (${duration}s)` : "";
+    return `✓ Thinking finished.${durationText}`;
   };
 
   return (

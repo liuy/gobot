@@ -218,10 +218,11 @@ export function useOpenClawRuntime({
     setAwaitingResponse(false);
     setIsStreaming(false);
     setStreamingId(null);
+    setThinkingStartTime(null);
     if (opts?.clearRunId) {
       activeRunIdRef.current = null;
     }
-  }, [setAwaitingResponse, setIsStreaming, setStreamingId]);
+  }, [setAwaitingResponse, setIsStreaming, setStreamingId, setThinkingStartTime]);
 
   const configResultRef = useRef<ConfigParseResult | null>(null);
   const modelsCatalogRef = useRef<Array<Record<string, unknown>> | null>(null);
@@ -355,6 +356,7 @@ export function useOpenClawRuntime({
     if (runInProgress) {
       setAwaitingResponse(true);
       setIsStreaming(true);
+      setThinkingStartTime(Date.now());
       startHistoryPolling();
     } else {
       stopHistoryPolling();

@@ -45,14 +45,14 @@ describe("ThinkingPill", () => {
       expect(screen.getByText(new RegExp(`….*${lastChars.slice(-20)}`))).toBeInTheDocument();
     });
 
-    it("shows 'Thinking finished.' when thinking is complete while streaming", () => {
-      render(<ThinkingPill text={longText} isStreaming={true} isThinkingComplete={true} />);
-      expect(screen.getByText("✓ Thinking finished.")).toBeInTheDocument();
+    it("shows 'Thinking finished.' with duration when thinking is complete while streaming", () => {
+      render(<ThinkingPill text={longText} isStreaming={true} isThinkingComplete={true} duration={3} />);
+      expect(screen.getByText("✓ Thinking finished. (3s)")).toBeInTheDocument();
     });
 
-    it("shows 'Thinking finished.' when streaming is done", () => {
-      render(<ThinkingPill text={longText} isStreaming={false} />);
-      expect(screen.getByText("✓ Thinking finished.")).toBeInTheDocument();
+    it("shows 'Thinking finished.' with duration when streaming is done", () => {
+      render(<ThinkingPill text={longText} isStreaming={false} duration={5} />);
+      expect(screen.getByText("✓ Thinking finished. (5s)")).toBeInTheDocument();
     });
 
     it("expands to show full content when clicked", async () => {

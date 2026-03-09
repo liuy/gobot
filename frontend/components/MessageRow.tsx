@@ -181,10 +181,10 @@ function InjectedPill({ text, message, subagentStore }: { text: string; message?
               <div ref={contentRef} className="border-t border-border px-3 py-2 text-xs leading-[1.75rem] text-muted-foreground">
                 {hasRichContent ? (
                   <div className="flex flex-col gap-1.5">
-                    {message?.reasoning && !hasThinkingParts && <ThinkingPill text={message.reasoning} />}
+                    {message?.reasoning && !hasThinkingParts && <ThinkingPill text={message.reasoning} duration={message?.thinkingDuration} />}
                     {parts?.map((part, i) => {
                       if (part.type === "thinking") {
-                        return <ThinkingPill key={`thinking-${i}`} text={part.thinking || part.text || ""} />;
+                        return <ThinkingPill key={`thinking-${i}`} text={part.thinking || part.text || ""} duration={message?.thinkingDuration} />;
                       }
                       if (isToolCallPart(part)) {
                         return <ToolCallPill key={`${part.name}-${i}`} name={part.name || "tool"} args={typeof part.arguments === "string" ? part.arguments : part.arguments ? JSON.stringify(part.arguments) : undefined} status={part.status} result={part.result} resultError={part.resultError} toolCallId={part.toolCallId} subagentStore={part.name === SPAWN_TOOL_NAME ? subagentStore : undefined} />;
@@ -548,7 +548,7 @@ export function MessageRow({
 
   if (!isUser) {
     if (message.reasoning && !hasThinkingParts) {
-      pushAssistantBlock("reasoning", <ThinkingPill text={message.reasoning} isStreaming={isStreaming} />);
+      pushAssistantBlock("reasoning", <ThinkingPill text={message.reasoning} isStreaming={isStreaming} duration={message?.thinkingDuration} />);
     }
 
          if (Array.isArray(message.content)) {
@@ -560,7 +560,7 @@ export function MessageRow({
           const isThinkingComplete = isStreaming && remainingParts.length > 0;
           // If thinking is complete but content is still streaming, show "✓ Thinking finished."
           // Otherwise, thinking is still streaming, show scrolling preview with animation
-          pushAssistantBlock(`thinking-${i}`, <ThinkingPill text={part.thinking || part.text || ""} isStreaming={isStreaming} isThinkingComplete={isThinkingComplete} />);
+          pushAssistantBlock(`thinking-${i}`, <ThinkingPill text={part.thinking || part.text || ""} isStreaming={isStreaming} isThinkingComplete={isThinkingComplete} duration={message?.thinkingDuration} />);
           return;
         }
         if (isToolCallPart(part)) {
@@ -594,7 +594,7 @@ export function MessageRow({
           const showCursor = isStreaming && isLastText && !hasLaterNonText;
 
           if (extractedThinking && !hasThinkingParts && !message.reasoning) {
-            pushAssistantBlock(`text-thinking-${i}`, <ThinkingPill text={extractedThinking} isStreaming={isStreaming} />);
+            pushAssistantBlock(`text-thinking-${i}`, <ThinkingPill text={extractedThinking} isStreaming={isStreaming} duration={message?.thinkingDuration} />);
           }
           if (cleanText) {
             pushAssistantBlock(
@@ -618,7 +618,7 @@ export function MessageRow({
       const { thinking: extractedThinking, text: rawCleanText } = stripThinkTags(text);
       const cleanText = stripFinalTags(rawCleanText);
       if (extractedThinking && !hasThinkingParts && !message.reasoning) {
-        pushAssistantBlock("fallback-thinking", <ThinkingPill text={extractedThinking} isStreaming={isStreaming} />);
+        pushAssistantBlock("fallback-thinking", <ThinkingPill text={extractedThinking} isStreaming={isStreaming} duration={message?.thinkingDuration} />);
       }
       if (cleanText) {
         pushAssistantBlock(

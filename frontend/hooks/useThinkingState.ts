@@ -49,7 +49,7 @@ export function useThinkingState(
       }
       setAwaitingResponse(false);
       setThinkingExiting(true);
-      setThinkingStartTime(null);
+      // Don't clear thinkingStartTime here - keep the timer running until streaming ends
     }
   }, []);
 

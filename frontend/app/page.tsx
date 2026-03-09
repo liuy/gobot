@@ -11,13 +11,7 @@ import {
   hasUnquotedMarker,
 } from "@/lib/constants";
 import { postScrollPosition, type BridgeMessage } from "@/lib/nativeBridge";
-import {
-  appendContentDelta as appendContentDeltaToMessages,
-  appendThinkingDelta as appendThinkingDeltaToMessages,
-  addToolCall as addToolCallToMessages,
-  resolveToolCall as resolveToolCallInMessages,
-  startThinkingBlock as startThinkingBlockInMessages,
-} from "@/lib/chat/streamMutations";
+import { useStreamHandlers } from "@/hooks/useStreamHandlers";
 import { buildDisplayMessages } from "@/lib/chat/messageTransforms";
 import { applyNativeZenMode } from "@/lib/chat/zenBridge";
 
@@ -260,45 +254,17 @@ export default function Home() {
 
   useKeyboardLayout(appRef, floatingBarRef, bottomRef, !isNative);
 
-  const appendContentDelta = useCallback((runId: string, delta: string, ts: number) => {
-    beginContentArrival();
-    setMessages((prev) => {
-      const next = appendContentDeltaToMessages(prev, runId, delta, ts);
-      if (next.created) setStreamingId(runId);
-      return next.messages;
-    });
-  }, [beginContentArrival]);
-
-  const appendThinkingDelta = useCallback((runId: string, delta: string, ts: number) => {
-    beginContentArrival();
-    setMessages((prev) => {
-      const next = appendThinkingDeltaToMessages(prev, runId, delta, ts);
-      if (next.created) setStreamingId(runId);
-      return next.messages;
-    });
-  }, [beginContentArrival]);
-
-  const startThinkingBlock = useCallback((runId: string, ts: number) => {
-    beginContentArrival();
-    setMessages((prev) => {
-      const next = startThinkingBlockInMessages(prev, runId, ts);
-      if (next.created) setStreamingId(runId);
-      return next.messages;
-    });
-  }, [beginContentArrival]);
-
-  const addToolCall = useCallback((runId: string, name: string, ts: number, toolCallId?: string, args?: string) => {
-    beginContentArrival();
-    setMessages((prev) => {
-      const next = addToolCallToMessages(prev, runId, name, ts, toolCallId, args);
-      if (next.created) setStreamingId(runId);
-      return next.messages;
-    });
-  }, [beginContentArrival]);
-
-  const resolveToolCall = useCallback((runId: string, name: string, toolCallId?: string, result?: string, isError?: boolean) => {
-    setMessages((prev) => resolveToolCallInMessages(prev, runId, name, toolCallId, result, isError));
-  }, []);
+  const {
+    appendContentDelta,
+    appendThinkingDelta,
+    startThinkingBlock,
+    addToolCall,
+    resolveToolCall,
+  } = useStreamHandlers({
+    beginContentArrival,
+    setMessages,
+    setStreamingId,
+  });
 
   const queuedMessageForRuntimeRef = useRef<{ text: string; attachments?: unknown[] } | null>(null);
 
