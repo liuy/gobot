@@ -5,7 +5,7 @@ import React, { useMemo, useState, useEffect, useLayoutEffect, useCallback, useR
 import { MessageRow } from "@/components/MessageRow";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { ZenToggle } from "@/components/ZenToggle";
-import { formatMessageTime, getMessageSide } from "@/lib/messageUtils";
+import { formatMessageTime, getMessageSide, formatDuration } from "@/lib/messageUtils";
 import { STOP_REASON_INJECTED } from "@/lib/constants";
 import { ZEN_SLIDE_MS, ZEN_FADE_MS, ZEN_TOGGLE_FRAME_MS } from "@/lib/chat/zenUi";
 import type { Message } from "@/types/chat";
@@ -682,7 +682,7 @@ export function ChatViewport({
                     <p className={`text-2xs text-muted-foreground/60 ${side === "right" ? "text-right" : "text-left"}`}>
                       {formatMessageTime(msg.timestamp)}
                       {msg.role === "assistant" && msg.runDuration && msg.runDuration > 0 && (
-                        <span className="ml-1">&middot; Worked for {msg.runDuration}s</span>
+                        <span className="ml-1"><span className="grayscale opacity-50">⌛</span> {formatDuration(msg.runDuration)}</span>
                       )}
                       {msg.role === "assistant" && !msg.runDuration && msg.thinkingDuration && msg.thinkingDuration > 0 && (
                         <span className="ml-1">&middot; {msg.thinkingDuration}s</span>
@@ -705,7 +705,7 @@ export function ChatViewport({
                       <p className={`text-2xs text-muted-foreground/60 ${side === "right" ? "text-right" : "text-left"}`}>
                         {formatMessageTime(msg.timestamp)}
                         {msg.role === "assistant" && msg.runDuration && msg.runDuration > 0 && (
-                          <span className="ml-1">&middot; Worked for {msg.runDuration}s</span>
+                          <span className="ml-1"><span className="grayscale opacity-50">⌛</span> {formatDuration(msg.runDuration)}</span>
                         )}
                         {msg.role === "assistant" && !msg.runDuration && msg.thinkingDuration && msg.thinkingDuration > 0 && (
                           <span className="ml-1">&middot; {msg.thinkingDuration}s</span>

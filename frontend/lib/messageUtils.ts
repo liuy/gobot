@@ -67,3 +67,14 @@ export function thinkingPreview(text: string): string {
   const words = text.trim().split(/\s+/).slice(0, 8).join(" ");
   return words + (text.trim().split(/\s+/).length > 8 ? "..." : "");
 }
+
+/** Format duration in seconds to human-readable string like "1m 5s" or "2h 30m" */
+export function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins < 60) return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remainMins = mins % 60;
+  return remainMins > 0 ? `${hours}h ${remainMins}m` : `${hours}h`;
+}
