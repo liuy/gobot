@@ -22,18 +22,20 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 
 	// 1. Test Append and GetRecent
 	t.Run("AppendAndGetRecent", func(t *testing.T) {
+		chatID := "test-chat"
 		for i := 0; i < 25; i++ {
 			msg := Message{
 				ID:        string(rune('a' + i)),
 				Content:   "Test message",
 				Timestamp: time.Now(),
+				ChatID:    chatID,
 			}
 			if err := cache.Append(msg); err != nil {
 				t.Errorf("Append failed: %v", err)
 			}
 		}
 
-		recent := cache.GetRecent()
+		recent := cache.GetRecent(chatID, 20)
 		if len(recent) > 20 {
 			t.Errorf("Expected max 20 recent messages, got %d", len(recent))
 		}
@@ -88,6 +90,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 			ID:        "test-msg",
 			Content:   "Build context test",
 			Timestamp: time.Now(),
+			ChatID:    "test-chat",
 		}
 		ctx, err := builder.Build(msg)
 		if err != nil {
@@ -126,11 +129,12 @@ func TestIntegration_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Concurrent GetRecent
+	chatID := "test-chat"
 	for i := 0; i < numOps; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			cache.GetRecent()
+			cache.GetRecent(chatID, 20)
 		}()
 	}
 

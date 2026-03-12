@@ -88,12 +88,9 @@ func NewMemoryCache(dataDir string) (*MemoryCache, error) {
 	}
 	cache.hotData = hotData
 
-	recent, err := getRecentMessages(coldDB, 20)
-	if err != nil {
-		coldDB.Close()
-		return nil, err
-	}
-	cache.recentMessages = recent
+	// Note: recentMessages is initialized empty and populated via AddMessage
+	// Initial load is skipped since we need chatID context for filtering
+	cache.recentMessages = []Message{}
 
 	cache.startWorker()
 
@@ -186,14 +183,41 @@ func (c *MemoryCache) GetHot() (*HotMemoryData, error) {
 	return c.hotData, nil
 }
 
-// GetRecent returns the recent messages (up to 20).
+// GetRecent returns recent messages for a specific chatID, limited by the given limit.
 // Returns internal slice for performance. Callers must NOT modify the returned slice.
 // Safe operations: ctx.Recent[:n] (only modifies slice header)
 // Unsafe operations: append(), modifying elements
-func (c *MemoryCache) GetRecent() []Message {
+// If chatID is empty, returns empty slice with a warning.
+// Falls back to cold.db when memory cache is empty for the given chatID.
+func (c *MemoryCache) GetRecent(chatID string, limit int) []Message {
+	if chatID == "" {
+		log.Warn("[memory] GetRecent called with empty chatID, returning empty slice")
+		return []Message{}
+	}
+
 	c.recentMu.RLock()
-	defer c.recentMu.RUnlock()
-	return c.recentMessages
+	var filtered []Message
+	for _, msg := range c.recentMessages {
+		if msg.ChatID == chatID {
+			filtered = append(filtered, msg)
+		}
+	}
+	c.recentMu.RUnlock()
+
+	if len(filtered) == 0 {
+		messages, err := getRecentMessages(c.coldDB, chatID, limit)
+		if err != nil {
+			log.Warn("[memory] cold.db fallback failed: err=%v", err)
+			return []Message{}
+		}
+		return messages
+	}
+
+	if len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+
+	return filtered
 }
 
 // AddMessage adds a message to the memory system.

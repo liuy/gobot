@@ -133,7 +133,7 @@ func TestGetRecentMessages_EmptyDatabase(t *testing.T) {
 	}
 	defer db.Close()
 
-	messages, err := getRecentMessages(db, 20)
+	messages, err := getRecentMessages(db, "test-chat", 20)
 	if err != nil {
 		t.Errorf("Expected no error, got: %v", err)
 	}
@@ -152,18 +152,20 @@ func TestGetRecentMessages_WithLimit(t *testing.T) {
 	}
 	defer db.Close()
 
+	chatID := "test-chat"
 	for i := 0; i < 25; i++ {
 		msg := Message{
 			ID:        string(rune('a' + i)),
 			Content:   "test",
 			Timestamp: time.Now().Add(time.Duration(i) * time.Second),
+			ChatID:    chatID,
 		}
 		if err := insertMessage(db, msg); err != nil {
 			t.Fatalf("Failed to insert message: %v", err)
 		}
 	}
 
-	messages, err := getRecentMessages(db, 20)
+	messages, err := getRecentMessages(db, chatID, 20)
 	if err != nil {
 		t.Errorf("Expected no error, got: %v", err)
 	}
@@ -182,18 +184,20 @@ func TestGetRecentMessages_DescendingOrder(t *testing.T) {
 	}
 	defer db.Close()
 
+	chatID := "test-chat"
 	for i := 0; i < 3; i++ {
 		msg := Message{
 			ID:        string(rune('a' + i)),
 			Content:   "test",
 			Timestamp: time.Now().Add(time.Duration(i) * time.Hour),
+			ChatID:    chatID,
 		}
 		if err := insertMessage(db, msg); err != nil {
 			t.Fatalf("Failed to insert message: %v", err)
 		}
 	}
 
-	messages, err := getRecentMessages(db, 10)
+	messages, err := getRecentMessages(db, chatID, 10)
 	if err != nil {
 		t.Errorf("Expected no error, got: %v", err)
 	}

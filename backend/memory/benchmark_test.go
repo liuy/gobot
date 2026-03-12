@@ -53,7 +53,7 @@ func BenchmarkGetRecent(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cache.GetRecent()
+		cache.GetRecent("benchmark-chat", 20)
 	}
 }
 

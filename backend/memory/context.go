@@ -26,7 +26,7 @@ func (b *ContextBuilder) Build(msg Message) (*Context, error) {
 		return nil, err
 	}
 
-	recent := b.cache.GetRecent()
+	recent := b.cache.GetRecent(msg.ChatID, 20)
 
 	ctx := &Context{
 		Longterm: longterm,

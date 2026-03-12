@@ -37,6 +37,8 @@ func initColdDB(dbPath string) (*sql.DB, error) {
 	);
 	
 	CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp DESC);
+	CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
+	CREATE INDEX IF NOT EXISTS idx_messages_chat_id_timestamp ON messages(chat_id, timestamp DESC);
 	
 	CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 		content_tokens,
@@ -85,13 +87,14 @@ func insertMessage(db *sql.DB, msg Message) error {
 	return err
 }
 
-func getRecentMessages(db *sql.DB, limit int) ([]Message, error) {
+func getRecentMessages(db *sql.DB, chatID string, limit int) ([]Message, error) {
 	rows, err := db.Query(`
 		SELECT id, content, timestamp, human_ids, channel, chat_id, role, type
 		FROM messages
+		WHERE chat_id = ?
 		ORDER BY timestamp DESC
 		LIMIT ?
-	`, limit)
+	`, chatID, limit)
 	if err != nil {
 		return nil, err
 	}

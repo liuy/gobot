@@ -74,7 +74,7 @@ func TestNewMemoryCache_MissingFiles(t *testing.T) {
 		t.Error("Expected non-nil hot data")
 	}
 
-	recent := cache.GetRecent()
+	recent := cache.GetRecent("test-chat", 20)
 	if len(recent) != 0 {
 		t.Errorf("Expected 0 recent messages, got %d", len(recent))
 	}
@@ -265,13 +265,14 @@ func TestGetRecent_Fixed20(t *testing.T) {
 			ID:        fmt.Sprintf("msg-%d", i),
 			Content:   "test",
 			Timestamp: time.Now(),
+			ChatID:    "test-chat",
 		}
 		if err := cache.Append(msg); err != nil {
 			t.Fatalf("Failed to append message: %v", err)
 		}
 	}
 
-	recent := cache.GetRecent()
+	recent := cache.GetRecent("test-chat", 20)
 
 	if len(recent) != 20 {
 		t.Errorf("Expected 20 recent messages, got %d", len(recent))
@@ -287,18 +288,16 @@ func TestGetRecent_ReturnsInternalSlice(t *testing.T) {
 	}
 	defer cache.Close()
 
-	msg := Message{ID: "1", Content: "test", Timestamp: time.Now()}
+	msg := Message{ID: "1", Content: "test", Timestamp: time.Now(), ChatID: "test-chat"}
 	if err := cache.Append(msg); err != nil {
 		t.Fatalf("Failed to append message: %v", err)
 	}
 
-	recent1 := cache.GetRecent()
-	recent2 := cache.GetRecent()
+	recent1 := cache.GetRecent("test-chat", 20)
+	recent2 := cache.GetRecent("test-chat", 20)
 
-	// Both should point to same underlying data (zero-copy optimization)
-	// Note: Callers must NOT modify the returned slice
-	if &recent1[0] != &recent2[0] {
-		t.Error("GetRecent should return internal slice for performance")
+	if len(recent1) != 1 || len(recent2) != 1 {
+		t.Error("GetRecent should return filtered messages")
 	}
 }
 
@@ -347,13 +346,14 @@ func TestAppend_UpdateRecentCache(t *testing.T) {
 		ID:        "test-1",
 		Content:   "Test message",
 		Timestamp: time.Now(),
+		ChatID:    "test-chat",
 	}
 
 	if err := cache.Append(msg); err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
 
-	recent := cache.GetRecent()
+	recent := cache.GetRecent("test-chat", 20)
 	if len(recent) != 1 {
 		t.Errorf("Expected 1 recent message, got %d", len(recent))
 	}
@@ -371,8 +371,8 @@ func TestAppend_PrependToRecent(t *testing.T) {
 	}
 	defer cache.Close()
 
-	msg1 := Message{ID: "1", Content: "First", Timestamp: time.Now()}
-	msg2 := Message{ID: "2", Content: "Second", Timestamp: time.Now()}
+	msg1 := Message{ID: "1", Content: "First", Timestamp: time.Now(), ChatID: "test-chat"}
+	msg2 := Message{ID: "2", Content: "Second", Timestamp: time.Now(), ChatID: "test-chat"}
 
 	if err := cache.Append(msg1); err != nil {
 		t.Fatalf("Append msg1 failed: %v", err)
@@ -381,7 +381,7 @@ func TestAppend_PrependToRecent(t *testing.T) {
 		t.Fatalf("Append msg2 failed: %v", err)
 	}
 
-	recent := cache.GetRecent()
+	recent := cache.GetRecent("test-chat", 20)
 	if len(recent) < 2 {
 		t.Fatalf("Expected at least 2 messages, got %d", len(recent))
 	}
@@ -400,6 +400,7 @@ func TestAppend_Concurrent(t *testing.T) {
 	}
 	defer cache.Close()
 
+	chatID := "test-chat-concurrent"
 	var wg sync.WaitGroup
 	numGoroutines := 100
 
@@ -411,6 +412,7 @@ func TestAppend_Concurrent(t *testing.T) {
 				ID:        fmt.Sprintf("msg-%d", id), // 修复：生成唯一 ID
 				Content:   "concurrent test",
 				Timestamp: time.Now(),
+				ChatID:    chatID,
 			}
 			if err := cache.Append(msg); err != nil {
 				t.Errorf("Append failed in goroutine %d: %v", id, err)
@@ -420,7 +422,7 @@ func TestAppend_Concurrent(t *testing.T) {
 
 	wg.Wait()
 
-	recent := cache.GetRecent()
+	recent := cache.GetRecent(chatID, 20)
 	if len(recent) != 20 {
 		t.Errorf("Expected 20 recent messages, got %d", len(recent))
 	}
@@ -532,7 +534,8 @@ func TestMemoryCache_ConcurrentReads(t *testing.T) {
 	}
 	defer cache.Close()
 
-	msg := Message{ID: "1", Content: "test", Timestamp: time.Now()}
+	chatID := "test-chat-reads"
+	msg := Message{ID: "1", Content: "test", Timestamp: time.Now(), ChatID: chatID}
 	if err := cache.Append(msg); err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -544,7 +547,7 @@ func TestMemoryCache_ConcurrentReads(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = cache.GetRecent()
+			_ = cache.GetRecent(chatID, 20)
 			_, _ = cache.GetLongterm()
 			_, _ = cache.GetHot()
 		}()
@@ -557,10 +560,11 @@ func TestMemoryCache_ConcurrentReadWriteRace(t *testing.T) {
 	cache, _ := setupTestCache(t)
 	defer cache.Close()
 
+	chatID := "test-chat-race"
 	var wg sync.WaitGroup
 	var errors []error
 	var mu sync.Mutex
-	
+
 	numWriters := 50
 	numReaders := 50
 
@@ -572,6 +576,7 @@ func TestMemoryCache_ConcurrentReadWriteRace(t *testing.T) {
 				ID:        fmt.Sprintf("race-test-%d", id),
 				Content:   "concurrent write test",
 				Timestamp: time.Now(),
+				ChatID:    chatID,
 			}
 			if err := cache.Append(msg); err != nil {
 				mu.Lock()
@@ -585,13 +590,13 @@ func TestMemoryCache_ConcurrentReadWriteRace(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			_ = cache.GetRecent()
+			_ = cache.GetRecent(chatID, 20)
 			_, _ = cache.GetHot()
 		}(i)
 	}
 
 	wg.Wait()
-	
+
 	if len(errors) > 0 {
 		t.Errorf("Concurrent read-write race test failed with %d errors: %v", len(errors), errors)
 	}

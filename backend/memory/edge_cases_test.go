@@ -262,18 +262,20 @@ func TestGetRecent_RowsError(t *testing.T) {
 	cache, _ := NewMemoryCache(tmpDir)
 	defer cache.Close()
 
+	chatID := "test-chat"
 	for i := 0; i < 30; i++ {
 		msg := Message{
 			ID:        fmt.Sprintf("recent-%d", i),
 			Content:   fmt.Sprintf("message %d", i),
 			Timestamp: time.Now().Add(time.Duration(i) * time.Second),
+			ChatID:    chatID,
 		}
 		if err := cache.Append(msg); err != nil {
 			t.Fatalf("Append %d failed: %v", i, err)
 		}
 	}
 
-	recent := cache.GetRecent()
+	recent := cache.GetRecent(chatID, 20)
 
 	if len(recent) != 20 {
 		t.Errorf("Expected 20 recent messages, got %d", len(recent))

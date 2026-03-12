@@ -35,10 +35,12 @@ func TestBuild_BasicContext(t *testing.T) {
 	}
 	defer cache.Close()
 
+	chatID := "test-chat-basic"
 	msg := Message{
 		ID:        "test-1",
 		Content:   "Test message",
 		Timestamp: time.Now(),
+		ChatID:    chatID,
 	}
 	if err := cache.Append(msg); err != nil {
 		t.Fatalf("Append failed: %v", err)
@@ -67,11 +69,13 @@ func TestBuild_WithinBudget(t *testing.T) {
 	}
 	defer cache.Close()
 
+	chatID := "test-chat-budget"
 	for i := 0; i < 5; i++ {
 		msg := Message{
 			ID:        string(rune('a' + i)),
 			Content:   "short",
 			Timestamp: time.Now(),
+			ChatID:    chatID,
 		}
 		if err := cache.Append(msg); err != nil {
 			t.Fatalf("Append failed: %v", err)
@@ -79,7 +83,7 @@ func TestBuild_WithinBudget(t *testing.T) {
 	}
 
 	builder := NewContextBuilder(cache, 1000)
-	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now()}
+	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now(), ChatID: chatID}
 	ctx, err := builder.Build(currentMsg)
 
 	if err != nil {
@@ -110,11 +114,13 @@ func TestBuild_DropHotMemory(t *testing.T) {
 	cache.hotDataMu.Unlock()
 
 	// 添加一些 recent messages
+	chatID := "test-chat-drophot"
 	for i := 0; i < 10; i++ {
 		msg := Message{
 			ID:        fmt.Sprintf("msg-%d", i),
 			Content:   "This is a longer message to consume tokens",
 			Timestamp: time.Now(),
+			ChatID:    chatID,
 		}
 		if err := cache.Append(msg); err != nil {
 			t.Fatalf("Append failed: %v", err)
@@ -122,7 +128,7 @@ func TestBuild_DropHotMemory(t *testing.T) {
 	}
 
 	builder := NewContextBuilder(cache, 100) // 很小的 budget
-	currentMsg := Message{ID: "current", Content: "test message", Timestamp: time.Now()}
+	currentMsg := Message{ID: "current", Content: "test message", Timestamp: time.Now(), ChatID: chatID}
 	ctx, err := builder.Build(currentMsg)
 
 	if err != nil {
@@ -146,6 +152,7 @@ func TestBuild_DropOldestRecent(t *testing.T) {
 	}
 	defer cache.Close()
 
+	chatID := "test-chat-dropoldest"
 	messageIDs := []string{}
 	for i := 0; i < 20; i++ {
 		id := fmt.Sprintf("msg-%02d", i)
@@ -154,6 +161,7 @@ func TestBuild_DropOldestRecent(t *testing.T) {
 			ID:        id,
 			Content:   "This is a message with enough content to consume tokens",
 			Timestamp: time.Now().Add(time.Duration(i) * time.Second),
+			ChatID:    chatID,
 		}
 		if err := cache.Append(msg); err != nil {
 			t.Fatalf("Append failed: %v", err)
@@ -161,7 +169,7 @@ func TestBuild_DropOldestRecent(t *testing.T) {
 	}
 
 	builder := NewContextBuilder(cache, 50)
-	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now()}
+	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now(), ChatID: chatID}
 	ctx, err := builder.Build(currentMsg)
 
 	if err != nil {
@@ -251,11 +259,13 @@ func TestBuild_TableDriven(t *testing.T) {
 				cache.hotDataMu.Unlock()
 			}
 
+			chatID := fmt.Sprintf("test-chat-%s", tt.name)
 			for i := 0; i < tt.numMessages; i++ {
 				msg := Message{
 					ID:        fmt.Sprintf("msg-%02d", i),
 					Content:   "Test message content for token counting",
 					Timestamp: time.Now(),
+					ChatID:    chatID,
 				}
 				if err := cache.Append(msg); err != nil {
 					t.Fatalf("Append failed: %v", err)
@@ -263,7 +273,7 @@ func TestBuild_TableDriven(t *testing.T) {
 			}
 
 			builder := NewContextBuilder(cache, tt.maxTokens)
-			currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now()}
+			currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now(), ChatID: chatID}
 			ctx, err := builder.Build(currentMsg)
 
 			if err != nil {
@@ -296,8 +306,9 @@ func TestBuild_WithLongterm(t *testing.T) {
 		t.Fatalf("Failed to save longterm: %v", err)
 	}
 
+	chatID := "test-chat-longterm"
 	builder := NewContextBuilder(cache, 10000)
-	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now()}
+	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now(), ChatID: chatID}
 	ctx, err := builder.Build(currentMsg)
 
 	if err != nil {
@@ -390,7 +401,8 @@ func TestContextBuilder_ZeroMaxTokens(t *testing.T) {
 
 	builder := NewContextBuilder(cache, 0)
 
-	msg := Message{ID: "1", Content: "test", Timestamp: time.Now()}
+	chatID := "test-chat-zero"
+	msg := Message{ID: "1", Content: "test", Timestamp: time.Now(), ChatID: chatID}
 	ctx, err := builder.Build(msg)
 
 	if err != nil {
@@ -413,11 +425,13 @@ func TestBuild_MultipleCalls(t *testing.T) {
 
 	builder := NewContextBuilder(cache, 1000)
 
+	chatID := "test-chat-multi"
 	for i := 0; i < 3; i++ {
 		msg := Message{
 			ID:        string(rune('a' + i)),
 			Content:   "test message",
 			Timestamp: time.Now(),
+			ChatID:    chatID,
 		}
 
 		ctx, err := builder.Build(msg)
