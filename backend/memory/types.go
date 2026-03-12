@@ -3,14 +3,15 @@ package memory
 import "time"
 
 type Message struct {
-	ID        string    `json:"id"`
-	Content   string    `json:"content"`
-	Timestamp time.Time `json:"timestamp"`
-	HumanIDs  []string  `json:"humanIDs"`
-	Channel   string    `json:"channel"`
-	ChatID    string    `json:"chatID"`
-	Role      string    `json:"role"` // "user", "assistant", "system"
-	Type      string    `json:"type,omitempty"`
+	ID         string    `json:"id"`
+	Content    string    `json:"content"`
+	Timestamp  time.Time `json:"timestamp"`
+	HumanIDs   []string  `json:"humanIDs"`
+	Channel    string    `json:"channel"`
+	ChatID     string    `json:"chatID"`
+	Role       string    `json:"role"`       // "user", "assistant", "system"
+	Type       string    `json:"type,omitempty"`
+	StopReason string    `json:"stopReason,omitempty"` // "end_turn", "stop", etc.
 }
 
 type HotMemoryData struct {

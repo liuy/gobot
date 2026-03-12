@@ -328,7 +328,6 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 	sentContentBlock := false
 
 	for chunk := range ch {
-		log.Info("[HandleChatSend] chunk: thinkingLen=%d, contentLen=%d", len(chunk.Thinking), len(chunk.Content))
 		// Handle reasoning/thinking stream
 		if chunk.Thinking != "" {
 			if !sentReasoningBlock {
@@ -379,7 +378,7 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 	}
 
 	// Send lifecycle end event
-	log.Info("[HandleChatSend] lifecycle end: finalReasoningLen=%d, finalContentLen=%d", len(finalReasoning), len(finalContent))
+	log.Info("[HandleChatSend] lifecycle end: \nfinalReasoning:\n%s, \nfinalContent:\n%s", finalReasoning, finalContent)
 	if err := gows.JSON.Send(conn, WSEvent{
 		Type:  "event",
 		Event: "agent",
@@ -439,14 +438,12 @@ func mustMarshal(v any) string {
 
 func HandleChatHistory(conn *gows.Conn, req WSRequest) error {
 	sessionKey, _ := req.Params["sessionKey"].(string)
-	log.Info("[HandleChatHistory] sessionKey=%s", sessionKey)
 	messages := []any{}
 	if MemoryCache != nil {
 		recent := MemoryCache.GetRecent(sessionKey, 20)
 		log.Info("[HandleChatHistory] got %d messages from cache", len(recent))
 		messages = make([]any, 0, len(recent))
 		for _, msg := range recent {
-			log.Info("[HandleChatHistory] msg: role=%s, stopReason=%q, json=%s", msg.Role, msg.StopReason, mustMarshal(msg))
 			messages = append(messages, msg)
 		}
 	}

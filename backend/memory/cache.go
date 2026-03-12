@@ -17,7 +17,46 @@ const (
 	longtermCheckTTL = 30 * time.Second
 	updateChanSize   = 1000
 	updateInterval   = 100 * time.Millisecond
+	recentBufferSize = 20
 )
+
+// recentBuffer is a ring buffer for recent messages.
+// It stores messages in chronological order (oldest first) and automatically
+// overwrites the oldest message when full.
+// Thread-unsafe: callers must hold lock.
+type recentBuffer struct {
+	data  [recentBufferSize]Message
+	head  int // next write position
+	count int // current message count
+}
+
+// Add adds a message to the buffer. O(1) operation.
+func (r *recentBuffer) Add(msg Message) {
+	r.data[r.head] = msg
+	r.head = (r.head + 1) % recentBufferSize
+	if r.count < recentBufferSize {
+		r.count++
+	}
+}
+
+// GetByChatID returns messages for a specific chatID in chronological order (oldest first).
+func (r *recentBuffer) GetByChatID(chatID string) []Message {
+	if r.count == 0 {
+		return nil
+	}
+	var result []Message
+	// start points to the oldest message: (head - count + size) % size
+	start := (r.head - r.count + recentBufferSize) % recentBufferSize
+	// Traverse from oldest to newest: iterate forward from start
+	for i := 0; i < r.count; i++ {
+		idx := (start + i) % recentBufferSize
+		msg := r.data[idx]
+		if msg.ChatID == chatID {
+			result = append(result, msg)
+		}
+	}
+	return result
+}
 
 type MemoryCache struct {
 	dataDir string
@@ -30,8 +69,8 @@ type MemoryCache struct {
 	hotData   *HotMemoryData
 	hotDataMu sync.RWMutex
 
-	recentMessages []Message
-	recentMu       sync.RWMutex
+	recent   recentBuffer
+	recentMu sync.RWMutex
 
 	coldDB *sql.DB
 
@@ -58,13 +97,13 @@ func NewMemoryCache(dataDir string) (*MemoryCache, error) {
 	}
 
 	cache := &MemoryCache{
-		dataDir:        dataDir,
-		coldDB:         coldDB,
-		updateChan:     make(chan Message, updateChanSize),
-		stopChan:       make(chan struct{}),
-		nowFunc:        time.Now,
-		hotData:        &HotMemoryData{},
-		recentMessages: []Message{},
+		dataDir:    dataDir,
+		coldDB:     coldDB,
+		updateChan: make(chan Message, updateChanSize),
+		stopChan:   make(chan struct{}),
+		nowFunc:    time.Now,
+		hotData:    &HotMemoryData{},
+		// recent (ring buffer) is zero-initialized automatically
 	}
 
 	longtermPath := filepath.Join(memoryDir, "longterm.md")
@@ -87,10 +126,6 @@ func NewMemoryCache(dataDir string) (*MemoryCache, error) {
 		return nil, err
 	}
 	cache.hotData = hotData
-
-	// Note: recentMessages is initialized empty and populated via AddMessage
-	// Initial load is skipped since we need chatID context for filtering
-	cache.recentMessages = []Message{}
 
 	cache.startWorker()
 
@@ -184,9 +219,7 @@ func (c *MemoryCache) GetHot() (*HotMemoryData, error) {
 }
 
 // GetRecent returns recent messages for a specific chatID, limited by the given limit.
-// Returns internal slice for performance. Callers must NOT modify the returned slice.
-// Safe operations: ctx.Recent[:n] (only modifies slice header)
-// Unsafe operations: append(), modifying elements
+// Returns a new slice, safe for callers to modify.
 // If chatID is empty, returns empty slice with a warning.
 // Falls back to cold.db when memory cache is empty for the given chatID.
 func (c *MemoryCache) GetRecent(chatID string, limit int) []Message {
@@ -196,12 +229,7 @@ func (c *MemoryCache) GetRecent(chatID string, limit int) []Message {
 	}
 
 	c.recentMu.RLock()
-	var filtered []Message
-	for _, msg := range c.recentMessages {
-		if msg.ChatID == chatID {
-			filtered = append(filtered, msg)
-		}
-	}
+	filtered := c.recent.GetByChatID(chatID)
 	c.recentMu.RUnlock()
 
 	if len(filtered) == 0 {
@@ -217,7 +245,7 @@ func (c *MemoryCache) GetRecent(chatID string, limit int) []Message {
 		filtered = filtered[:limit]
 	}
 
-	return filtered
+	return filtered // already in chronological order (oldest first)
 }
 
 // AddMessage adds a message to the memory system.
@@ -242,10 +270,7 @@ func (c *MemoryCache) AddMessage(msg Message) error {
 
 	// Update Recent immediately (synchronous, ~100ns)
 	c.recentMu.Lock()
-	c.recentMessages = append([]Message{msg}, c.recentMessages...)
-	if len(c.recentMessages) > 20 {
-		c.recentMessages = c.recentMessages[:20]
-	}
+	c.recent.Add(msg)
 	c.recentMu.Unlock()
 
 	// Queue for async Cold + Hot update
