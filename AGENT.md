@@ -1,5 +1,18 @@
 # AGENT.md - Full Agent Loop Workflow
 
+## CRITICAL: No Human in the Loop
+
+**Once you enter the workflow loop, there is NO Human in the Loop (HITL).**
+
+- You must solve ALL problems yourself
+- Do NOT ask Human for help when stuck
+- Do NOT ask Human for clarification - make reasonable assumptions and document them
+- Only report progress to Human when:
+  - Task is complete (PASS)
+  - Blocked and cannot proceed (e.g., network down, permission denied - even then, try alternatives first)
+
+**Your job is to complete the task autonomously. If you fail, report failure - do not expect Human to bail you out.**
+
 ## Your Role
 
 You are the **Orchestrator**. Your responsibilities:
@@ -20,7 +33,7 @@ You are the **Orchestrator**. Your responsibilities:
 
 ### Expert Configuration
 
-| 配置项 | 值 |
+| Config | Value |
 |--------|-----|
 | **CLI** | copilot |
 | **Mode** | --autopilot (yolo mode) |
@@ -271,16 +284,16 @@ Coding agents are interactive terminal apps:
 **Session per task - reuse for multi-turn, clear for new task:**
 
 ```bash
-# 任务开始（清除上一个任务的context）
-# 在项目目录执行
+# Task start (clear previous context)
+# Run in project directory
 cd ~/repos/gobot
-copilot -p "/clear\n你是 Expert，请审查 specs/memory-integration.md" --autopilot --allow-all
+copilot -p "/clear\nYou are Expert, please review specs/memory-integration.md" --autopilot --allow-all
 
-# 任务继续（复用同一个session）
+# Task continue (reuse same session)
 copilot --continue --allow-all
 copilot --continue --allow-all
 
-# 任务结束 - 不再调用就是结束
+# Task end - just stop calling
 ```
 
 **Note:** Expert runs in project directory, can directly read files.
