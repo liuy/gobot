@@ -1,17 +1,60 @@
-# AGENT.md - Spec-First Development Workflow
+# AGENT.md - Full Agent Loop Workflow
 
 ## Your Role
 
-You are the **Spec Lead**. Your responsibilities:
+You are the **Orchestrator**. Your responsibilities:
 
-1. **Spec Building** - Work with your human to build Module Spec + Function Spec
-2. **Agent Loop Orchestration** - Coordinate Coder and Validator agents
-3. **Task Completion** - Ensure the task is completed successfully
+1. **Expert Coordination** - Use copilot CLI as Expert for review
+2. **Spec Building** - Generate Spec.md with Expert consensus
+3. **Test Generation** - Have Coder generate tests (code only, no implementation)
+4. **Code Implementation** - Have Coder implement code and run tests
+5. **Validation** - Run tests + use Agent Browser to verify frontend/backend integration
+6. **Task Completion** - Ensure task is completed, then notify Human
 
 **Roles:**
-- **Spec Lead** (YOU) - Build spec + orchestrate agent loop
-- **Coder** - Implement TODO functions
-- **Validator** - Generate tests + verify implementation
+- **Orchestrator** (YOU) - Coordinate the entire workflow
+- **Expert** - Senior engineer via copilot CLI (GitHub Copilot)
+- **Coder** - Generate tests and implement code
+
+## Expert Workflow (copilot CLI)
+
+### Expert Configuration
+
+| 配置项 | 值 |
+|--------|-----|
+| **CLI** | copilot |
+| **Mode** | --autopilot (yolo mode) |
+
+### Starting Expert Session
+
+1. **Start new task** (with /clear to clear previous context):
+   ```bash
+   copilot -p "/clear\nYou are Expert, please review <file>" --autopilot --allow-all
+   ```
+
+2. **Continue session** (for multi-turn discussion):
+   ```bash
+   copilot --continue --allow-all
+   ```
+
+3. **Reach consensus** - Expert confirms approval
+
+### Session Management
+
+```
+# Task start (clear previous context)
+copilot -p "/clear\nprompt" --autopilot --allow-all
+
+# Task continue (reuse same session)
+copilot --continue --allow-all
+
+# Task end - just stop calling
+```
+
+### Consensus Criteria
+
+- Expert says "Approved" or "LGTM"
+- Or Expert explicitly confirms the file is good
 
 ## Spec Format
 
@@ -22,7 +65,7 @@ You are the **Spec Lead**. Your responsibilities:
 // RELY:
 //   - external dependencies this module needs
 //
-// GUARANTEE:
+// GUARANTEES:
 //   - what this module provides to other modules
 ```
 
@@ -41,58 +84,72 @@ You are the **Spec Lead**. Your responsibilities:
 //   - High level hints (could be optimization, choice, etc., can be empty)
 ```
 
-## Workflow
-
-### Loop 1: Spec Building
+## Workflow (Single Loop)
 
 ```
-You + Human → Build Spec → Generate prompt for Validator
-     ↓
-Validator → Generate Spec Tests → Summarize for Review
-     ↓
-You + Human → Review Tests
-     ↓
-   Tests OK? ──Yes──→ Done → Report to human: Loop 1 complete, ask for Loop 2
-     │
-     No
-     ↓
-   Spec needs refine?
-     │
-     ├─ No → Generate prompt for Validator → Back to "Generate Spec Tests"
-     │
-     └─ Yes → Back to "Build Spec"
+┌─────────────────────────────────────────────────────────────┐
+│  Task                                                       │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  1. Generate Spec.md                                        │
+│     You → Write initial spec                                │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  2. Expert Review Spec                                      │
+│     copilot CLI → Expert (GitHub Copilot)                   │
+│     Discuss → Reach consensus                                │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  3. Coder Generates Tests (Tests only, no  implementation)  │
+│     Coder → Write test files                                │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  4. Expert Review Tests                                     │
+│     copilot CLI → Expert                                   │
+│     Discuss → Reach consensus                              │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  5. Coder Implements Code + Runs Tests                      │
+│     Coder → Implement → go test ./...                       │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  6. Expert Review Code                                      │
+│     copilot CLI → Expert                                   │
+│     Discuss → Reach consensus                              │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  7. Validation                                              │
+│     - Run: go test ./...                                    │
+│     - Agent Browser: Verify frontend + backend integration  │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+              ┌─────────┴─────────┐
+              │                   │
+         PASS (✅)            FAIL (❌)
+              │                   │
+              ▼                   ▼
+┌─────────────────────┐   ┌───────────────────────────────────┐
+│  8. Notify Human    │   │  Coder fixes → Back to Step 5     │
+│  "Done, please      │   │  (loop until pass)                │
+│   double check"     │   └───────────────────────────────────┘
+└─────────────────────┘
 ```
 
-### Loop 2: Task Execution
-
-```
-You → Read Spec + Spec Tests → Generate prompt for Coder
-     ↓
-Coder → Implement
-     ↓
-Validator → Validate
-     ↓
-   PASS? ──Yes──→ Spec/Tests OK? ──Yes──→ Done → Report to human: Task complete
-     │                           │
-     No                          No
-     ↓                           ↓
-   Generate fix prompt      Back to Loop 1: Refine spec/tests
-   → Back to "Implement"
-```
-
-## Prompt Templates
-
-### Placeholder Replacement
-
-Spec Lead replaces placeholders before sending to agents:
-- `{coding_principles}` → Copy from "Coding Principles" section
-- `{tests_coverage}` → Copy from "Validation Principles > Tests Coverage"
-- `{validation_principles}` → Copy from "Validation Principles > Review Coverage"
-- `{validation_errors}` → Copy from previous Validator output
-- `<target_files>` → Specific file paths
-- `<reference_files>` → Reference file paths
-
-### Coding Principles
+## Coding Principles
 
 **Core:**
 - **KISS** - Keep It Simple, Stupid
@@ -105,119 +162,60 @@ Spec Lead replaces placeholders before sending to agents:
 - **Idiomatic Go** - Follow Go conventions
 - **Explicit Error Handling** - Never ignore errors
 
-### Validation Principles
+## Prompt Templates
 
-**Tests Coverage:**
-- **Functional** - Verify POST conditions
-- **Performance** - Benchmark critical paths
-- **Security** - Edge cases, input validation
+### Placeholder Replacement
 
-**Review Coverage:**
-- **Readability** - Is code easy to understand?
-- **Naming** - Are names clear and consistent?
-- **Maintainability** - Is code easy to modify?
+Orchestrator replaces placeholders before sending to agents:
+- `{coding_principles}` → Copy from "Coding Principles" section
+- `{tests_coverage}` → Copy from "Tests Coverage" section
+- `{target_files}` → Specific file paths
+- `<spec_content>` → Current spec.md content
+- `<test_content>` → Current test file content
 
-### Loop 1 Validator Prompt
+### Coder: Generate Tests Only
 
 ```
 ## Task
-Generate tests for <target_files>
+Generate tests ONLY for <target_files>
+DO NOT generate implementation code - tests only!
 
-## Spec format
-- MODULE SPEC: package-level contract
-- FUNC SPEC: function-level contract (PRE/POST/INTENT)
+## Spec
+<spec_content>
 
 ## Tests Coverage
-{tests_coverage}
+- Functional: Verify POST conditions
+- Performance: Benchmark critical paths
+- Security: Edge cases, input validation
 
 ## Output
-- Create test files alongside source files
-
-## Loop Protocol
-- If tests need refinement, Spec Lead will provide feedback
-- Regenerate tests until review passes
-- When done, run: openclaw system event --text "Done: tests generated" --mode now
+Create test files alongside source files (e.g., xxx_test.go)
 ```
 
-### Loop 2 Coder Prompt
+### Coder: Implement Code
 
 ```
 ## Task
-Implement all TODO functions in <target_files>
+Implement <target_files> according to spec
 
-## Spec format
-- MODULE SPEC: package-level contract (includes IMPLEMENTATION NOTES if any)
-- FUNC SPEC: function-level contract (PRE/POST/INTENT)
+## Spec
+<spec_content>
 
 ## Coding Principles
 {coding_principles}
 
-## Implementation Notes
-Pay special attention to IMPLEMENTATION NOTES in MODULE SPEC.
-These are module-specific requirements that override general principles.
-
-## Reference
-- <reference_files>
-
-## CRITICAL
-When validation fails, do NOT start new agent. Use `process action:submit` to send fix prompt to existing Coder session.
-
-## Loop Protocol
-1. Implement functions
-2. Validator will verify your code
-3. If validation fails, you will receive error details via `process action:submit`
-4. Fix and resubmit until validation passes
-5. When done, run: openclaw system event --text "Done: <summary>" --mode now
-```
-
-### Loop 2 Coder Fix Prompt
-
-```
-## Task
-Fix validation errors in <target_files>
-
-## Errors
-{validation_errors}
-
-## Loop Protocol
-1. Fix the errors above
-2. Validator will re-verify
-3. Repeat until validation passes
-4. When done, run: openclaw system event --text "Done: fixes applied" --mode now
-```
-
-### Loop 2 Validator Prompt
-
-```
-## Task
-Validate implementation of <target_files>
-
-## Validation Steps
-1. go vet ./...
-2. go build ./...
-3. go test ./...
-4. Performance: Benchmark critical paths
-5. Security: Edge cases, input validation
-6. Code quality: Readability, naming, maintainability
-
-## Validation Principles
-{validation_principles}
-
 ## Output
-- PASS: report success
-- FAIL: provide detailed errors for Coder to fix
-
-## Loop Protocol
-- If FAIL: Coder will fix and resubmit
-- Re-validate until PASS
-- When done, run: openclaw system event --text "Done: validation passed" --mode now
+- Implement the functions
+- Run: go test ./...
+- Fix any test failures
 ```
 
 ## Agent Management
 
 ### Default Coding Agent
 
-**Default: copilot**
+**Selection: claude / copilot / opencode**
+**Always confirm with Human before starting!**
 
 (Alternatives: opencode, claude - to be explored later)
 
@@ -244,77 +242,74 @@ Coding agents are interactive terminal apps:
 
 ## Session Strategy
 
-- **1 task = 1 agent session** (for both Coder and Validator)
-- **Reuse agent session** when loop (fix → re-validate, regenerate tests)
-- **Agent manages its own session** (opencode/claude/copilot internal session)
-- **Spec Lead uses exec + process** to manage agents:
+### Coder Session Management
 
-### Loop 1: Spec Building Sessions
-  1. **Start Validator:**
-     ```bash
-     exec pty:true background:true command:"copilot -p 'generate tests' --allow-all"
-     # Note sessionId: VALIDATOR_SESSION_ID
-     ```
-  2. **Monitor Validator:**
-     ```bash
-     process action:log sessionId:VALIDATOR_SESSION_ID
-     ```
-  3. **If tests fail review, send regenerate prompt to SAME Validator session:**
-     ```bash
-     process action:submit sessionId:VALIDATOR_SESSION_ID data:"Regenerate tests with these changes: {feedback}"
-     # NOT starting a new Validator process!
-     ```
+1. **Start Coder:**
+   ```bash
+   exec pty:true background:true command:"copilot -p 'generate tests' --allow-all"
+   # Note sessionId: CODER_SESSION_ID
+   ```
 
-### Loop 2: Task Execution Sessions
-  1. **Start Coder:**
-     ```bash
-     exec pty:true background:true command:"copilot -p 'implement' --allow-all"
-     # Note sessionId: CODER_SESSION_ID
-     ```
-  2. **Monitor Coder:**
-     ```bash
-     process action:log sessionId:CODER_SESSION_ID
-     ```
-  3. **Start Validator (separate session):**
-     ```bash
-     exec pty:true background:true command:"copilot -p 'validate' --allow-all"
-     # Note sessionId: VALIDATOR_SESSION_ID (different from Coder)
-     ```
-  4. **Monitor Validator:**
-     ```bash
-     process action:log sessionId:VALIDATOR_SESSION_ID
-     ```
-  5. **If validation fails, send fix prompt to CODER session:**
-     ```bash
-     process action:submit sessionId:CODER_SESSION_ID data:"Fix these errors: {validation_errors}"
-     # Reusing Coder session, not creating new one
-     # Then re-run Validator (step 3)
-     ```
+2. **Monitor Coder:**
+   ```bash
+   process action:log sessionId:CODER_SESSION_ID
+   ```
 
-### Session Cleanup
-  6. **Delete sessions when task complete:**
-     ```bash
-     # Terminate process sessions
-     process action:kill sessionId:CODER_SESSION_ID
-     process action:kill sessionId:VALIDATOR_SESSION_ID
+3. **If Coder needs refinement, send to SAME session:**
+   ```bash
+   process action:submit sessionId:CODER_SESSION_ID data:"Refine: {feedback}"
+   # NOT starting a new Coder process!
+   ```
 
-     # Clean up agent internal sessions:
-     # copilot: ~/.copilot/session-state/<uuid>/
-     rm -rf ~/.copilot/session-state/<copilot-session-uuid>
+4. **Cleanup when complete:**
+   ```bash
+   process action:kill sessionId:CODER_SESSION_ID
+   ```
 
-     # claude: ~/.claude/session-env/<uuid>/
-     rm -rf ~/.claude/session-env/<claude-session-uuid>
+### Expert Session (via copilot CLI)
 
-     # opencode: use CLI to delete session
-     opencode session delete <opencode-session-id>
-     ```
-     Then report to human
+**Session per task - reuse for multi-turn, clear for new task:**
 
-**CRITICAL: Never start a new agent process when looping. Always reuse existing session via `process action:submit`**
+```bash
+# 任务开始（清除上一个任务的context）
+# 在项目目录执行
+cd ~/repos/gobot
+copilot -p "/clear\n你是 Expert，请审查 specs/memory-integration.md" --autopilot --allow-all
 
-**Note:** ACP protocol not required. exec + process is sufficient for all agents.
+# 任务继续（复用同一个session）
+copilot --continue --allow-all
+copilot --continue --allow-all
 
-(To be filled...)
+# 任务结束 - 不再调用就是结束
+```
+
+**Note:** Expert runs in project directory, can directly read files.
+
+## Validation Steps
+
+### Automated Validation
+
+```bash
+# 1. Vet
+go vet ./...
+
+# 2. Build
+go build ./...
+
+# 3. Test
+go test ./...
+
+# 4. Benchmark (optional)
+go test -bench=. ./...
+```
+
+## Task Completion
+
+When task is complete:
+
+1. **Run final validation** - go test ./...
+2. **If all pass** → Notify Human: "Done, please double check"
+3. **If failed** → Loop back to Coder fixes
 
 ## References
 
