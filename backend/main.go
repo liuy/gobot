@@ -15,10 +15,13 @@ package main
 import (
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"gobot/channel"
 	"gobot/log"
+	"gobot/memory"
 	"gobot/providers"
 
 	gows "golang.org/x/net/websocket"
@@ -68,6 +71,32 @@ func main() {
 	}
 	channel.ChatProvider = llmProvider
 	channel.ChatModel = llmModel
+
+	// Initialize memory cache for multi-turn conversation
+	dataDir := strings.TrimSpace(os.Getenv("GOBOT_DATA_DIR"))
+	if dataDir == "" {
+		dataDir = "data"
+	}
+	memCache, err := memory.NewMemoryCache(dataDir)
+	if err != nil {
+		log.Fatal("NewMemoryCache failed: %v", err)
+	}
+	channel.MemoryCache = memCache
+	log.Info("Memory cache initialized with dataDir=%s", dataDir)
+
+	// Setup graceful shutdown for data integrity
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		log.Info("Shutting down...")
+		if channel.MemoryCache != nil {
+			if err := channel.MemoryCache.Close(); err != nil {
+				log.Error("MemoryCache.Close: %v", err)
+			}
+		}
+		os.Exit(0)
+	}()
 
 	// WebSocket endpoint
 	http.Handle("/ws", gows.Handler(handleWebSocket))

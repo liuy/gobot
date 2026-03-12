@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"gobot/memory"
 	"gobot/providers"
 	gows "golang.org/x/net/websocket"
 )
@@ -101,6 +102,7 @@ const (
 var (
 	ChatProvider providers.LLMProvider
 	ChatModel    string
+	MemoryCache  *memory.MemoryCache
 )
 
 // FUNC SPEC: SendConnectChallenge
@@ -207,12 +209,68 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 		})
 	}
 
-	// TODO: Memory integration - will be replaced by ContextBuilder
+	if content == "" {
+		return fmt.Errorf("chat.send missing message")
+	}
+
 	messages := []providers.Message{
 		{Role: "user", Content: content},
 	}
-	if content == "" {
-		return fmt.Errorf("chat.send missing message")
+	userMessage := memory.Message{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Content:   content,
+		Timestamp: time.Now(),
+		Role:      "user",
+		ChatID:    sessionKey,
+	}
+	if MemoryCache != nil {
+		recent := MemoryCache.GetRecent(sessionKey, 20)
+		builder := memory.NewContextBuilder(MemoryCache, 4000)
+		ctx, err := builder.Build(userMessage)
+		if err != nil {
+			return err
+		}
+
+		messages = messages[:0]
+		if strings.TrimSpace(ctx.Longterm) != "" {
+			messages = append(messages, providers.Message{
+				Role:    "system",
+				Content: "Long-term memory:\n" + ctx.Longterm,
+			})
+		}
+		if ctx.Hot != nil && (len(ctx.Hot.ActiveTopics) > 0 || len(ctx.Hot.RecentKeywords) > 0) {
+			parts := make([]string, 0, len(ctx.Hot.ActiveTopics)+len(ctx.Hot.RecentKeywords))
+			for _, topic := range ctx.Hot.ActiveTopics {
+				parts = append(parts, topic.Name)
+			}
+			for _, kw := range ctx.Hot.RecentKeywords {
+				parts = append(parts, kw.Word)
+			}
+			messages = append(messages, providers.Message{
+				Role:    "system",
+				Content: "Hot memory keywords: " + strings.Join(parts, ", "),
+			})
+		}
+
+		history := ctx.Recent
+		if len(history) == 0 {
+			history = recent
+		}
+		for i := len(history) - 1; i >= 0; i-- {
+			h := history[i]
+			if strings.TrimSpace(h.Content) == "" {
+				continue
+			}
+			messages = append(messages, providers.Message{
+				Role:    h.Role,
+				Content: h.Content,
+			})
+		}
+		messages = append(messages, providers.Message{Role: "user", Content: content})
+
+		if err := MemoryCache.AddMessage(userMessage); err != nil {
+			return err
+		}
 	}
 
 	// Send lifecycle start event
@@ -318,6 +376,18 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 		return err
 	}
 
+	if MemoryCache != nil && strings.TrimSpace(finalContent) != "" {
+		if err := MemoryCache.AddMessage(memory.Message{
+			ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+			Content:   finalContent,
+			Timestamp: time.Now(),
+			Role:      "assistant",
+			ChatID:    sessionKey,
+		}); err != nil {
+			return err
+		}
+	}
+
 	return gows.JSON.Send(conn, WSEvent{
 		Type:  "event",
 		Event: "chat",
@@ -345,14 +415,24 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 //   - Sends WSResponse{OK:true, Payload:{"messages":[]}}
 //
 // INTENT:
-//   - Return empty chat history (demo mode, no persistence)
+//   - Return chat history from memory cache when enabled
 func HandleChatHistory(conn *gows.Conn, req WSRequest) error {
+	sessionKey, _ := req.Params["sessionKey"].(string)
+	messages := []any{}
+	if MemoryCache != nil {
+		recent := MemoryCache.GetRecent(sessionKey, 20)
+		messages = make([]any, 0, len(recent))
+		for _, msg := range recent {
+			messages = append(messages, msg)
+		}
+	}
+
 	return gows.JSON.Send(conn, WSResponse{
 		Type: "res",
 		ID:   req.ID,
 		OK:   true,
 		Payload: map[string]any{
-			"messages": []any{},
+			"messages": messages,
 		},
 	})
 }
