@@ -15,10 +15,12 @@ package channel
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	"gobot/log"
 	"gobot/memory"
 	"gobot/providers"
 	gows "golang.org/x/net/websocket"
@@ -188,11 +190,25 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 	content, _ := req.Params["message"].(string)
 	sessionKey, _ := req.Params["sessionKey"].(string)
 	runId := req.ID
+	log.Info("[HandleChatSend] received message: sessionKey=%s, content=%s, runId=%s", sessionKey, content, runId)
 	if ChatProvider == nil {
 		return fmt.Errorf("chat provider not configured")
 	}
 	if strings.TrimSpace(ChatModel) == "" {
 		return fmt.Errorf("chat model not configured")
+	}
+
+	// Send ack response immediately (like OpenClaw)
+	if err := gows.JSON.Send(conn, WSResponse{
+		Type: "res",
+		ID:   req.ID,
+		OK:   true,
+		Payload: map[string]any{
+			"runId":  runId,
+			"status": "started",
+		},
+	}); err != nil {
+		return err
 	}
 
 	sendAgent := func(stream string, delta string) error {
@@ -312,6 +328,7 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 	sentContentBlock := false
 
 	for chunk := range ch {
+		log.Info("[HandleChatSend] chunk: thinkingLen=%d, contentLen=%d", len(chunk.Thinking), len(chunk.Content))
 		// Handle reasoning/thinking stream
 		if chunk.Thinking != "" {
 			if !sentReasoningBlock {
@@ -362,6 +379,7 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 	}
 
 	// Send lifecycle end event
+	log.Info("[HandleChatSend] lifecycle end: finalReasoningLen=%d, finalContentLen=%d", len(finalReasoning), len(finalContent))
 	if err := gows.JSON.Send(conn, WSEvent{
 		Type:  "event",
 		Event: "agent",
@@ -378,16 +396,18 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 
 	if MemoryCache != nil && strings.TrimSpace(finalContent) != "" {
 		if err := MemoryCache.AddMessage(memory.Message{
-			ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
-			Content:   finalContent,
-			Timestamp: time.Now(),
-			Role:      "assistant",
-			ChatID:    sessionKey,
+			ID:         fmt.Sprintf("%d", time.Now().UnixNano()),
+			Content:    finalContent,
+			Timestamp:  time.Now(),
+			Role:       "assistant",
+			ChatID:     sessionKey,
+			StopReason: "end_turn",
 		}); err != nil {
 			return err
 		}
 	}
 
+	// Final event: only signal completion, content already streamed via agent events
 	return gows.JSON.Send(conn, WSEvent{
 		Type:  "event",
 		Event: "chat",
@@ -395,11 +415,7 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 			"runId":      runId,
 			"sessionKey": sessionKey,
 			"state":      "final",
-			"message": map[string]any{
-				"role":      "assistant",
-				"content":   finalContent,
-				"timestamp": time.Now().UnixMilli(),
-			},
+			"stopReason": "end_turn",
 		},
 	})
 }
@@ -416,13 +432,21 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 //
 // INTENT:
 //   - Return chat history from memory cache when enabled
+func mustMarshal(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
 func HandleChatHistory(conn *gows.Conn, req WSRequest) error {
 	sessionKey, _ := req.Params["sessionKey"].(string)
+	log.Info("[HandleChatHistory] sessionKey=%s", sessionKey)
 	messages := []any{}
 	if MemoryCache != nil {
 		recent := MemoryCache.GetRecent(sessionKey, 20)
+		log.Info("[HandleChatHistory] got %d messages from cache", len(recent))
 		messages = make([]any, 0, len(recent))
 		for _, msg := range recent {
+			log.Info("[HandleChatHistory] msg: role=%s, stopReason=%q, json=%s", msg.Role, msg.StopReason, mustMarshal(msg))
 			messages = append(messages, msg)
 		}
 	}
