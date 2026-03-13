@@ -198,6 +198,11 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 		return fmt.Errorf("chat model not configured")
 	}
 
+	// Validate message content before sending ack
+	if content == "" {
+		return fmt.Errorf("chat.send missing message")
+	}
+
 	// Send ack response immediately (like OpenClaw)
 	if err := gows.JSON.Send(conn, WSResponse{
 		Type: "res",
@@ -254,26 +259,13 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 				Content: "Long-term memory:\n" + ctx.Longterm,
 			})
 		}
-		if ctx.Hot != nil && (len(ctx.Hot.ActiveTopics) > 0 || len(ctx.Hot.RecentKeywords) > 0) {
-			parts := make([]string, 0, len(ctx.Hot.ActiveTopics)+len(ctx.Hot.RecentKeywords))
-			for _, topic := range ctx.Hot.ActiveTopics {
-				parts = append(parts, topic.Name)
-			}
-			for _, kw := range ctx.Hot.RecentKeywords {
-				parts = append(parts, kw.Word)
-			}
-			messages = append(messages, providers.Message{
-				Role:    "system",
-				Content: "Hot memory keywords: " + strings.Join(parts, ", "),
-			})
-		}
 
 		history := ctx.Recent
 		if len(history) == 0 {
 			history = recent
 		}
-		for i := len(history) - 1; i >= 0; i-- {
-			h := history[i]
+		// Iterate from oldest to newest (history is already oldest-first)
+		for _, h := range history {
 			if strings.TrimSpace(h.Content) == "" {
 				continue
 			}
@@ -395,12 +387,11 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 
 	if MemoryCache != nil && strings.TrimSpace(finalContent) != "" {
 		if err := MemoryCache.AddMessage(memory.Message{
-			ID:         fmt.Sprintf("%d", time.Now().UnixNano()),
-			Content:    finalContent,
-			Timestamp:  time.Now(),
-			Role:       "assistant",
-			ChatID:     sessionKey,
-			StopReason: "end_turn",
+			ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+			Content:   finalContent,
+			Timestamp: time.Now(),
+			Role:      "assistant",
+			ChatID:    sessionKey,
 		}); err != nil {
 			return err
 		}

@@ -30,15 +30,3 @@ func waitForMessage(t *testing.T, cache *MemoryCache, query string, expectedCoun
 		return len(results) >= expectedCount
 	})
 }
-
-// waitForHotUpdate waits for hot memory to have at least expectedKeywords.
-func waitForHotUpdate(t *testing.T, cache *MemoryCache, expectedKeywords int) {
-	t.Helper()
-	waitFor(t, 2*time.Second, func() bool {
-		hot, err := cache.GetHot()
-		if err != nil {
-			return false
-		}
-		return len(hot.RecentKeywords) >= expectedKeywords
-	})
-}

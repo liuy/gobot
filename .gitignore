@@ -1,5 +1,7 @@
 api.md
 backend/gobot
+backend/gobot_test
+backend/data/
 backend/frontend/
 backend/go.sum
 backend/coverage*

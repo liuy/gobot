@@ -66,9 +66,6 @@ type MemoryCache struct {
 	longtermMu        sync.RWMutex
 	longtermLastCheck time.Time
 
-	hotData   *HotMemoryData
-	hotDataMu sync.RWMutex
-
 	recent   recentBuffer
 	recentMu sync.RWMutex
 
@@ -102,7 +99,6 @@ func NewMemoryCache(dataDir string) (*MemoryCache, error) {
 		updateChan: make(chan Message, updateChanSize),
 		stopChan:   make(chan struct{}),
 		nowFunc:    time.Now,
-		hotData:    &HotMemoryData{},
 		// recent (ring buffer) is zero-initialized automatically
 	}
 
@@ -118,14 +114,6 @@ func NewMemoryCache(dataDir string) (*MemoryCache, error) {
 		cache.longtermMod = info.ModTime()
 		cache.longtermLastCheck = time.Now() // Initial load counts as check
 	}
-
-	hotPath := filepath.Join(memoryDir, "hot.json")
-	hotData, err := loadHot(hotPath)
-	if err != nil {
-		coldDB.Close()
-		return nil, err
-	}
-	cache.hotData = hotData
 
 	cache.startWorker()
 
@@ -204,18 +192,6 @@ func (c *MemoryCache) GetLongterm() (string, error) {
 	c.longtermMu.Unlock()
 
 	return content, nil
-}
-
-// GetHot returns the hot memory data.
-// Returns internal pointer for performance. Callers must NOT modify the returned data.
-func (c *MemoryCache) GetHot() (*HotMemoryData, error) {
-	c.hotDataMu.RLock()
-	defer c.hotDataMu.RUnlock()
-
-	if c.hotData == nil {
-		return &HotMemoryData{}, nil
-	}
-	return c.hotData, nil
 }
 
 // GetRecent returns recent messages for a specific chatID, limited by the given limit.
@@ -330,52 +306,13 @@ func (c *MemoryCache) startWorker() {
 	}()
 }
 
-// flushPending writes pending messages to Cold and updates Hot.
+// flushPending writes pending messages to Cold.
 func (c *MemoryCache) flushPending(messages []Message) {
-	// 1. Batch write to Cold (SQLite)
 	for _, msg := range messages {
 		if err := insertMessage(c.coldDB, msg); err != nil {
 			log.Warn("[memory] failed to insert message to cold: msg_id=%s, err=%v", msg.ID, err)
 		}
 	}
-
-	// 2. Update Hot
-	c.processHotUpdate(messages)
-}
-
-func (c *MemoryCache) processHotUpdate(messages []Message) {
-	c.hotDataMu.Lock()
-	defer c.hotDataMu.Unlock()
-
-	now := c.nowFunc()
-	newHotData := &HotMemoryData{
-		ActiveTopics:   make([]Topic, len(c.hotData.ActiveTopics)),
-		TopicSummaries: make([]TopicSummary, len(c.hotData.TopicSummaries)),
-		RecentKeywords: make([]Keyword, len(c.hotData.RecentKeywords)),
-		LastUpdated:    now,
-	}
-
-	copy(newHotData.ActiveTopics, c.hotData.ActiveTopics)
-	copy(newHotData.TopicSummaries, c.hotData.TopicSummaries)
-	copy(newHotData.RecentKeywords, c.hotData.RecentKeywords)
-
-	for _, msg := range messages {
-		keywords := extractKeywords(msg.Content)
-		updateKeywords(newHotData, keywords, now)
-	}
-
-	updateTopics(newHotData, now)
-	cleanupExpired(newHotData, now)
-
-	memoryDir := filepath.Join(c.dataDir, "memory")
-	hotPath := filepath.Join(memoryDir, "hot.json")
-
-	if err := saveHot(hotPath, newHotData); err != nil {
-		log.Warn("[memory] failed to save hot: err=%v", err)
-		return
-	}
-
-	c.hotData = newHotData
 }
 
 func (c *MemoryCache) Search(query string) ([]Message, error) {

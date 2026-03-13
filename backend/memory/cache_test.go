@@ -66,14 +66,6 @@ func TestNewMemoryCache_MissingFiles(t *testing.T) {
 		t.Errorf("Expected empty longterm, got: %s", longterm)
 	}
 
-	hot, err := cache.GetHot()
-	if err != nil {
-		t.Errorf("GetHot failed: %v", err)
-	}
-	if hot == nil {
-		t.Error("Expected non-nil hot data")
-	}
-
 	recent := cache.GetRecent("test-chat", 20)
 	if len(recent) != 0 {
 		t.Errorf("Expected 0 recent messages, got %d", len(recent))
@@ -219,38 +211,6 @@ func TestGetLongterm_TTLCache(t *testing.T) {
 	}
 }
 
-func TestGetHot_CacheHit(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	cache, err := NewMemoryCache(tmpDir)
-	if err != nil {
-		t.Fatalf("Failed to create MemoryCache: %v", err)
-	}
-	defer cache.Close()
-
-	hotPath := filepath.Join(tmpDir, "memory", "hot.json")
-	data := &HotMemoryData{
-		RecentKeywords: []Keyword{{Word: "test", Count: 1}},
-	}
-	if err := saveHot(hotPath, data); err != nil {
-		t.Fatalf("Failed to write hot.json: %v", err)
-	}
-
-	result1, err := cache.GetHot()
-	if err != nil {
-		t.Fatalf("First GetHot failed: %v", err)
-	}
-
-	result2, err := cache.GetHot()
-	if err != nil {
-		t.Fatalf("Second GetHot failed: %v", err)
-	}
-
-	if result1 == nil || result2 == nil {
-		t.Fatal("Expected non-nil results")
-	}
-}
-
 func TestGetRecent_Fixed20(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -386,8 +346,12 @@ func TestAppend_PrependToRecent(t *testing.T) {
 		t.Fatalf("Expected at least 2 messages, got %d", len(recent))
 	}
 
-	if recent[0].ID != "2" {
-		t.Errorf("Expected newest message first, got ID %s", recent[0].ID)
+	// GetRecent returns oldest first
+	if recent[0].ID != "1" {
+		t.Errorf("Expected oldest message first, got ID %s", recent[0].ID)
+	}
+	if recent[1].ID != "2" {
+		t.Errorf("Expected newest message second, got ID %s", recent[1].ID)
 	}
 }
 
@@ -549,7 +513,6 @@ func TestMemoryCache_ConcurrentReads(t *testing.T) {
 			defer wg.Done()
 			_ = cache.GetRecent(chatID, 20)
 			_, _ = cache.GetLongterm()
-			_, _ = cache.GetHot()
 		}()
 	}
 
@@ -591,7 +554,6 @@ func TestMemoryCache_ConcurrentReadWriteRace(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			_ = cache.GetRecent(chatID, 20)
-			_, _ = cache.GetHot()
 		}(i)
 	}
 
@@ -602,46 +564,6 @@ func TestMemoryCache_ConcurrentReadWriteRace(t *testing.T) {
 	}
 }
 
-func TestAppend_TriggerHotUpdateEndToEnd(t *testing.T) {
-	cache, tmpDir := setupTestCache(t)
-
-	msg := Message{
-		ID:        "test-1",
-		Content:   "golang programming test",
-		Timestamp: time.Now(),
-	}
-
-	if err := cache.Append(msg); err != nil {
-		t.Fatalf("Append failed: %v", err)
-	}
-
-	if err := cache.Close(); err != nil {
-		t.Fatalf("Close failed: %v", err)
-	}
-
-	hotPath := filepath.Join(tmpDir, "memory", "hot.json")
-	data, err := loadHot(hotPath)
-	if err != nil {
-		t.Fatalf("Failed to reload hot.json: %v", err)
-	}
-
-	if data == nil {
-		t.Fatal("Expected non-nil hot data")
-	}
-
-	foundKeyword := false
-	for _, kw := range data.RecentKeywords {
-		if kw.Word == "golang" || kw.Word == "programming" {
-			foundKeyword = true
-			break
-		}
-	}
-
-	if !foundKeyword {
-		t.Errorf("Expected to find keywords from message, got: %+v", data.RecentKeywords)
-	}
-}
-
 func TestMemoryCache_TTLCleanup(t *testing.T) {
-	t.Skip("TTL cleanup requires internal nowFunc field which is private. TTL logic is tested in hot_test.go")
+	t.Skip("TTL cleanup requires internal nowFunc field which is private")
 }

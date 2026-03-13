@@ -9,35 +9,8 @@ type Message struct {
 	HumanIDs   []string  `json:"humanIDs"`
 	Channel    string    `json:"channel"`
 	ChatID     string    `json:"chatID"`
-	Role       string    `json:"role"`       // "user", "assistant", "system"
-	Type       string    `json:"type,omitempty"`
-	StopReason string    `json:"stopReason,omitempty"` // "end_turn", "stop", etc.
-}
-
-type HotMemoryData struct {
-	ActiveTopics   []Topic        `json:"activeTopics"`
-	TopicSummaries []TopicSummary `json:"topicSummaries"`
-	RecentKeywords []Keyword      `json:"recentKeywords"`
-	LastUpdated    time.Time      `json:"lastUpdated"`
-}
-
-type Topic struct {
-	Name       string    `json:"name"`
-	LastActive time.Time `json:"lastActive"`
-	Count      int       `json:"count"`
-}
-
-type TopicSummary struct {
-	Topic      string    `json:"topic"`
-	Summary    string    `json:"summary"`
-	KeyPoints  []string  `json:"keyPoints"`
-	LastActive time.Time `json:"lastActive"`
-}
-
-type Keyword struct {
-	Word       string    `json:"word"`
-	LastActive time.Time `json:"lastActive"`
-	Count      int       `json:"count"`
+	Role string `json:"role"` // "user", "assistant", "system"
+	Type string `json:"type,omitempty"`
 }
 
 type TaskInfo struct {
@@ -63,7 +36,6 @@ type TaskIndex struct {
 
 type Context struct {
 	Longterm  string
-	Hot       *HotMemoryData
 	Recent    []Message
 	TaskIndex *TaskIndex
 	Tasks     []string

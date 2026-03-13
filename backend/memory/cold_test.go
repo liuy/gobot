@@ -206,8 +206,9 @@ func TestGetRecentMessages_DescendingOrder(t *testing.T) {
 		t.Fatal("Need at least 2 messages to test order")
 	}
 
-	if messages[0].Timestamp.Before(messages[1].Timestamp) {
-		t.Error("Messages should be in descending order by timestamp")
+	// getRecentMessages returns oldest first (ascending order by timestamp)
+	if messages[0].Timestamp.After(messages[1].Timestamp) {
+		t.Error("Messages should be in ascending order by timestamp (oldest first)")
 	}
 }
 

@@ -61,18 +61,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 		}
 	})
 
-	// 3. Test GetHot
-	t.Run("GetHot", func(t *testing.T) {
-		hot, err := cache.GetHot()
-		if err != nil {
-			t.Errorf("GetHot failed: %v", err)
-		}
-		if hot == nil {
-			t.Error("Expected non-nil hot data")
-		}
-	})
-
-	// 4. Test Search
+	// 3. Test Search
 	t.Run("Search", func(t *testing.T) {
 		results, err := cache.Search("Test")
 		if err != nil {
@@ -83,7 +72,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 		}
 	})
 
-	// 5. Test ContextBuilder
+	// 4. Test ContextBuilder
 	t.Run("ContextBuilder", func(t *testing.T) {
 		builder := NewContextBuilder(cache, 1000)
 		msg := Message{
@@ -138,15 +127,6 @@ func TestIntegration_ConcurrentAccess(t *testing.T) {
 		}()
 	}
 
-	// Concurrent GetHot
-	for i := 0; i < numOps; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			cache.GetHot()
-		}()
-	}
-
 	// Concurrent GetLongterm
 	for i := 0; i < numOps; i++ {
 		wg.Add(1)
@@ -175,8 +155,8 @@ func TestIntegration_CloseIdempotent(t *testing.T) {
 	}
 }
 
-// TestIntegration_HotMemoryDrain tests that Close() drains hot updates
-func TestIntegration_HotMemoryDrain(t *testing.T) {
+// TestIntegration_CloseDrainsMessages tests that Close() drains pending messages
+func TestIntegration_CloseDrainsMessages(t *testing.T) {
 	tmpDir := t.TempDir()
 	cache, err := NewMemoryCache(tmpDir)
 	if err != nil {
@@ -187,7 +167,7 @@ func TestIntegration_HotMemoryDrain(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		msg := Message{
 			ID:        string(rune('a' + i)),
-			Content:   "Drain test keyword",
+			Content:   "Drain test message",
 			Timestamp: time.Now(),
 		}
 		if err := cache.Append(msg); err != nil {
@@ -195,24 +175,14 @@ func TestIntegration_HotMemoryDrain(t *testing.T) {
 		}
 	}
 
-	// Close should drain and save
+	// Close should drain and save to cold.db
 	if err := cache.Close(); err != nil {
 		t.Fatalf("Close failed: %v", err)
 	}
 
-	// Verify hot.json was saved
-	hotPath := filepath.Join(tmpDir, "memory", "hot.json")
-	if _, err := os.Stat(hotPath); os.IsNotExist(err) {
-		t.Error("Expected hot.json to exist after Close()")
-	}
-
-	data, err := loadHot(hotPath)
-	if err != nil {
-		t.Fatalf("Failed to load hot.json: %v", err)
-	}
-
-	// Verify keywords were extracted
-	if len(data.RecentKeywords) == 0 {
-		t.Error("Expected keywords to be extracted after drain")
+	// Verify messages were saved to cold.db
+	dbPath := filepath.Join(tmpDir, "memory", "cold.db")
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		t.Error("Expected cold.db to exist after Close()")
 	}
 }

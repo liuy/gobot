@@ -2,7 +2,6 @@ package memory
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 )
@@ -95,54 +94,6 @@ func TestBuild_WithinBudget(t *testing.T) {
 	}
 }
 
-func TestBuild_DropHotMemory(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	cache, err := NewMemoryCache(tmpDir)
-	if err != nil {
-		t.Fatalf("Failed to create MemoryCache: %v", err)
-	}
-	defer cache.Close()
-
-	// 直接设置 hot 数据，确保有足够的 tokens
-	cache.hotDataMu.Lock()
-	cache.hotData = &HotMemoryData{
-		ActiveTopics: []Topic{
-			{Name: strings.Repeat("topic-", 100), Count: 5}, // 大量 tokens
-		},
-	}
-	cache.hotDataMu.Unlock()
-
-	// 添加一些 recent messages
-	chatID := "test-chat-drophot"
-	for i := 0; i < 10; i++ {
-		msg := Message{
-			ID:        fmt.Sprintf("msg-%d", i),
-			Content:   "This is a longer message to consume tokens",
-			Timestamp: time.Now(),
-			ChatID:    chatID,
-		}
-		if err := cache.Append(msg); err != nil {
-			t.Fatalf("Append failed: %v", err)
-		}
-	}
-
-	builder := NewContextBuilder(cache, 100) // 很小的 budget
-	currentMsg := Message{ID: "current", Content: "test message", Timestamp: time.Now(), ChatID: chatID}
-	ctx, err := builder.Build(currentMsg)
-
-	if err != nil {
-		t.Errorf("Build failed: %v", err)
-	}
-
-	// hot tokens should be dropped when ratio >= 20%
-	if ctx.Hot == nil {
-		t.Log("Hot memory was dropped to fit within budget (expected)")
-	} else {
-		t.Error("Hot memory should have been dropped to fit within budget")
-	}
-}
-
 func TestBuild_DropOldestRecent(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -209,32 +160,22 @@ func TestBuild_DropOldestRecent(t *testing.T) {
 
 func TestBuild_TableDriven(t *testing.T) {
 	tests := []struct {
-		name          string
-		numMessages   int
-		maxTokens     int
-		expectHotDrop bool
-		minRecent     int
+		name        string
+		numMessages int
+		maxTokens   int
+		minRecent   int
 	}{
 		{
-			name:          "exact_fit",
-			numMessages:   5,
-			maxTokens:     500,
-			expectHotDrop: false,
-			minRecent:     5,
+			name:        "exact_fit",
+			numMessages: 5,
+			maxTokens:   500,
+			minRecent:   5,
 		},
 		{
-			name:          "drop_hot",
-			numMessages:   15,
-			maxTokens:     200,
-			expectHotDrop: true,
-			minRecent:     5,
-		},
-		{
-			name:          "drop_recent",
-			numMessages:   20,
-			maxTokens:     100,
-			expectHotDrop: true,
-			minRecent:     0,
+			name:        "drop_recent",
+			numMessages: 20,
+			maxTokens:   100,
+			minRecent:   0,
 		},
 	}
 
@@ -247,17 +188,6 @@ func TestBuild_TableDriven(t *testing.T) {
 				t.Fatalf("Failed to create MemoryCache: %v", err)
 			}
 			defer cache.Close()
-
-			// If expecting hot drop, set large enough hot data
-			if tt.expectHotDrop {
-				cache.hotDataMu.Lock()
-				cache.hotData = &HotMemoryData{
-					ActiveTopics: []Topic{
-						{Name: strings.Repeat("topic-", 100), Count: 5},
-					},
-				}
-				cache.hotDataMu.Unlock()
-			}
 
 			chatID := fmt.Sprintf("test-chat-%s", tt.name)
 			for i := 0; i < tt.numMessages; i++ {
@@ -278,10 +208,6 @@ func TestBuild_TableDriven(t *testing.T) {
 
 			if err != nil {
 				t.Errorf("Build failed: %v", err)
-			}
-
-			if tt.expectHotDrop && ctx.Hot != nil {
-				t.Errorf("Expected hot memory to be dropped in %s", tt.name)
 			}
 
 			if len(ctx.Recent) < tt.minRecent {
@@ -356,37 +282,6 @@ func TestCountTokens_MixedContent(t *testing.T) {
 
 	if count <= 0 {
 		t.Errorf("Expected positive token count, got %d", count)
-	}
-}
-
-func TestHotToText_NilInput(t *testing.T) {
-	result := hotToText(nil)
-
-	if result != "" {
-		t.Errorf("Expected empty string for nil input, got %q", result)
-	}
-}
-
-func TestHotToText_WithTopics(t *testing.T) {
-	hot := &HotMemoryData{
-		ActiveTopics: []Topic{
-			{Name: "project"},
-			{Name: "testing"},
-		},
-		RecentKeywords: []Keyword{
-			{Word: "golang"},
-			{Word: "code"},
-		},
-	}
-
-	result := hotToText(hot)
-
-	if result == "" {
-		t.Error("Expected non-empty result")
-	}
-
-	if len(result) < len("project") {
-		t.Error("Result should contain topic names")
 	}
 }
 

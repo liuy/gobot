@@ -24,24 +24,6 @@ func BenchmarkGetLongterm_CacheHit(b *testing.B) {
 	}
 }
 
-// BenchmarkGetHot_CacheHit benchmarks cache hit performance
-func BenchmarkGetHot_CacheHit(b *testing.B) {
-	tmpDir := b.TempDir()
-	cache, err := NewMemoryCache(tmpDir)
-	if err != nil {
-		b.Fatalf("Failed to create cache: %v", err)
-	}
-	defer cache.Close()
-
-	// Warm up cache
-	cache.GetHot()
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		cache.GetHot()
-	}
-}
-
 // BenchmarkGetRecent benchmarks recent message retrieval
 func BenchmarkGetRecent(b *testing.B) {
 	tmpDir := b.TempDir()

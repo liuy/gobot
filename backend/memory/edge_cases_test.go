@@ -9,25 +9,6 @@ import (
 	"time"
 )
 
-func TestUpdateKeywords_SliceRealloc(t *testing.T) {
-	hotData := &HotMemoryData{}
-	now := time.Now()
-
-	for i := 0; i < 100; i++ {
-		words := []string{fmt.Sprintf("keyword%d", i), "test"}
-		updateKeywords(hotData, words, now)
-	}
-
-	for _, kw := range hotData.RecentKeywords {
-		if kw.Word == "test" {
-			if kw.Count != 100 {
-				t.Errorf("'test' count should be 100, got %d", kw.Count)
-			}
-			break
-		}
-	}
-}
-
 func TestAppend_InvalidInput(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -108,29 +89,6 @@ func TestClose_AfterClose(t *testing.T) {
 	}
 }
 
-func TestTopicSummaries_NotImplemented(t *testing.T) {
-	tmpDir := t.TempDir()
-	cache, _ := NewMemoryCache(tmpDir)
-	defer cache.Close()
-
-	for i := 0; i < 5; i++ {
-		cache.Append(Message{
-			ID:        string(rune('1' + i)),
-			Content:   "test topic keyword",
-			Timestamp: time.Now(),
-		})
-	}
-
-	hot, _ := cache.GetHot()
-	if hot == nil {
-		t.Fatal("GetHot returned nil")
-	}
-
-	if len(hot.TopicSummaries) > 0 {
-		t.Errorf("TopicSummaries should be empty, got %d items", len(hot.TopicSummaries))
-	}
-}
-
 func TestAppend_VeryLongContent(t *testing.T) {
 	tmpDir := t.TempDir()
 	cache, _ := NewMemoryCache(tmpDir)
@@ -198,65 +156,6 @@ func TestAppend_HighConcurrency(t *testing.T) {
 	}
 }
 
-func TestUpdateKeywords_MapPointerRealloc(t *testing.T) {
-	tmpDir := t.TempDir()
-	cache, _ := NewMemoryCache(tmpDir)
-	defer cache.Close()
-
-	for i := 0; i < 50; i++ {
-		msg := Message{
-			ID:        fmt.Sprintf("realloc-%d", i),
-			Content:   fmt.Sprintf("keyword%d test%d word%d", i, i, i),
-			Timestamp: time.Now(),
-		}
-		if err := cache.Append(msg); err != nil {
-			t.Fatalf("Append %d failed: %v", i, err)
-		}
-	}
-
-	waitForHotUpdate(t, cache, 1)
-
-	hot, err := cache.GetHot()
-	if err != nil {
-		t.Fatalf("GetHot failed: %v", err)
-	}
-
-	for _, kw := range hot.RecentKeywords {
-		if kw.Count <= 0 {
-			t.Errorf("Keyword %q has invalid count %d", kw.Word, kw.Count)
-		}
-	}
-}
-
-func TestUpdateTopics_MapPointerRealloc(t *testing.T) {
-	hotData := &HotMemoryData{}
-	now := time.Now()
-
-	for i := 0; i < 50; i++ {
-		words := []string{fmt.Sprintf("topic%d", i), "commontopic", "commontopic", "commontopic"}
-		for _, w := range words {
-			updateKeywords(hotData, []string{w}, now)
-		}
-	}
-
-	updateTopics(hotData, now)
-
-	found := false
-	for _, topic := range hotData.ActiveTopics {
-		if topic.Name == "commontopic" {
-			found = true
-			if topic.Count < 3 {
-				t.Errorf("commontopic count should >= 3, got %d", topic.Count)
-			}
-			break
-		}
-	}
-
-	if !found {
-		t.Error("Expected 'commontopic' to become a topic")
-	}
-}
-
 func TestGetRecent_RowsError(t *testing.T) {
 	tmpDir := t.TempDir()
 	cache, _ := NewMemoryCache(tmpDir)
@@ -281,51 +180,8 @@ func TestGetRecent_RowsError(t *testing.T) {
 		t.Errorf("Expected 20 recent messages, got %d", len(recent))
 	}
 
-	if len(recent) > 1 && recent[0].Timestamp.Before(recent[1].Timestamp) {
-		t.Error("Recent messages should be in descending order")
-	}
-}
-
-func TestUpdateKeywords_RepeatedUpdate(t *testing.T) {
-	hotData := &HotMemoryData{}
-	now := time.Now()
-
-	updateKeywords(hotData, []string{"testword"}, now)
-
-	for _, kw := range hotData.RecentKeywords {
-		if kw.Word == "testword" && kw.Count != 1 {
-			t.Fatalf("Initial count should be 1, got %d", kw.Count)
-		}
-	}
-
-	for i := 0; i < 100; i++ {
-		updateKeywords(hotData, []string{fmt.Sprintf("unique%d", i)}, now)
-	}
-
-	updateKeywords(hotData, []string{"testword"}, now)
-
-	for _, kw := range hotData.RecentKeywords {
-		if kw.Word == "testword" && kw.Count != 2 {
-			t.Errorf("testword count should be 2, got %d", kw.Count)
-		}
-	}
-}
-
-func TestUpdateKeywords_DuplicateWords(t *testing.T) {
-	hotData := &HotMemoryData{}
-	now := time.Now()
-
-	words := []string{"test", "test", "test", "unique"}
-	updateKeywords(hotData, words, now)
-
-	if len(hotData.RecentKeywords) != 2 {
-		t.Errorf("Expected 2 keywords, got %d", len(hotData.RecentKeywords))
-	}
-
-	for _, kw := range hotData.RecentKeywords {
-		if kw.Word == "test" && kw.Count != 1 {
-			t.Errorf("test count should be 1, got %d", kw.Count)
-		}
+	if len(recent) > 1 && recent[0].Timestamp.After(recent[1].Timestamp) {
+		t.Error("Recent messages should be in ascending order (oldest first)")
 	}
 }
 

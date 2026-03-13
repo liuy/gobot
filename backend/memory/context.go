@@ -21,41 +21,25 @@ func (b *ContextBuilder) Build(msg Message) (*Context, error) {
 		return nil, err
 	}
 
-	hot, err := b.cache.GetHot()
-	if err != nil {
-		return nil, err
-	}
-
 	recent := b.cache.GetRecent(msg.ChatID, 20)
 
 	ctx := &Context{
 		Longterm: longterm,
-		Hot:      hot,
 		Recent:   recent,
 	}
 
 	totalTokens := countTokens(longterm)
-	if hot != nil {
-		totalTokens += countTokens(hotToText(hot))
-	}
 	for _, m := range recent {
 		totalTokens += countTokens(m.Content)
 	}
 	totalTokens += countTokens(msg.Content)
 
 	if totalTokens > b.maxTokens {
-		if hot != nil {
-			hotTokens := countTokens(hotToText(hot))
-			if float64(hotTokens)/float64(totalTokens) >= 0.2 {
-				ctx.Hot = nil
-				totalTokens -= hotTokens
-			}
-		}
-
 		for totalTokens > b.maxTokens && len(ctx.Recent) > 0 {
-			oldest := ctx.Recent[len(ctx.Recent)-1]
+			// Drop oldest messages first (from the front), keep newest messages
+			oldest := ctx.Recent[0]
 			totalTokens -= countTokens(oldest.Content)
-			ctx.Recent = ctx.Recent[:len(ctx.Recent)-1]
+			ctx.Recent = ctx.Recent[1:]
 		}
 	}
 
@@ -87,19 +71,4 @@ func countTokens(text string) int {
 		return 1
 	}
 	return tokens
-}
-
-func hotToText(hot *HotMemoryData) string {
-	if hot == nil {
-		return ""
-	}
-
-	var text string
-	for _, topic := range hot.ActiveTopics {
-		text += topic.Name + " "
-	}
-	for _, kw := range hot.RecentKeywords {
-		text += kw.Word + " "
-	}
-	return text
 }
