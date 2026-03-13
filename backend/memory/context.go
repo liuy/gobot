@@ -30,15 +30,15 @@ func (b *ContextBuilder) Build(msg Message) (*Context, error) {
 
 	totalTokens := countTokens(longterm)
 	for _, m := range recent {
-		totalTokens += countTokens(m.Content)
+		totalTokens += countTokens(ExtractTextFromContent(m.Content))
 	}
-	totalTokens += countTokens(msg.Content)
+	totalTokens += countTokens(ExtractTextFromContent(msg.Content))
 
 	if totalTokens > b.maxTokens {
 		for totalTokens > b.maxTokens && len(ctx.Recent) > 0 {
 			// Drop oldest messages first (from the front), keep newest messages
 			oldest := ctx.Recent[0]
-			totalTokens -= countTokens(oldest.Content)
+			totalTokens -= countTokens(ExtractTextFromContent(oldest.Content))
 			ctx.Recent = ctx.Recent[1:]
 		}
 	}

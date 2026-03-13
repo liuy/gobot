@@ -71,7 +71,6 @@ func TestInsertMessage_BasicInsert(t *testing.T) {
 		Channel:   "discord",
 		ChatID:    "chat-123",
 		Role:      "user",
-		Type:      "text",
 	}
 
 	err = insertMessage(db, msg)

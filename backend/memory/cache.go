@@ -237,7 +237,8 @@ func (c *MemoryCache) AddMessage(msg Message) error {
 	if strings.TrimSpace(msg.ID) == "" {
 		return fmt.Errorf("message ID cannot be empty")
 	}
-	if strings.TrimSpace(msg.Content) == "" {
+	// Extract text from Content for validation (supports string or []ContentPart)
+	if strings.TrimSpace(ExtractTextFromContent(msg.Content)) == "" {
 		return fmt.Errorf("message content cannot be empty")
 	}
 	if msg.Timestamp.IsZero() {

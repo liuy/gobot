@@ -266,12 +266,14 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 		}
 		// Iterate from oldest to newest (history is already oldest-first)
 		for _, h := range history {
-			if strings.TrimSpace(h.Content) == "" {
+			// Extract text from Content for validation (supports string or []ContentPart)
+			hText := memory.ExtractTextFromContent(h.Content)
+			if strings.TrimSpace(hText) == "" {
 				continue
 			}
 			messages = append(messages, providers.Message{
 				Role:    h.Role,
-				Content: h.Content,
+				Content: hText,
 			})
 		}
 		messages = append(messages, providers.Message{Role: "user", Content: content})
@@ -386,9 +388,20 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 	}
 
 	if MemoryCache != nil && strings.TrimSpace(finalContent) != "" {
+		// Build Content: use ContentPart array if there's reasoning, otherwise plain string
+		var msgContent any
+		if finalReasoning != "" {
+			msgContent = []memory.ContentPart{
+				{Type: "thinking", Thinking: finalReasoning},
+				{Type: "text", Text: finalContent},
+			}
+		} else {
+			msgContent = finalContent
+		}
+
 		if err := MemoryCache.AddMessage(memory.Message{
 			ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
-			Content:   finalContent,
+			Content:   msgContent,
 			Timestamp: time.Now(),
 			Role:      "assistant",
 			ChatID:    sessionKey,

@@ -2,15 +2,26 @@ package memory
 
 import "time"
 
+// ContentPart represents a single part of a message content, compatible with OpenAI/Anthropic format
+type ContentPart struct {
+	Type      string `json:"type"` // "text", "thinking", "tool_call", "image", "tool_result"
+	Text      string `json:"text,omitempty"`
+	Thinking  string `json:"thinking,omitempty"`
+	Name      string `json:"name,omitempty"`
+	ToolCallID string `json:"toolCallId,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+	Result    string `json:"result,omitempty"`
+	ImageURL  string `json:"image_url,omitempty"`
+}
+
 type Message struct {
 	ID         string    `json:"id"`
-	Content    string    `json:"content"`
+	Content    any       `json:"content"` // string | []ContentPart | nil
 	Timestamp  time.Time `json:"timestamp"`
 	HumanIDs   []string  `json:"humanIDs"`
 	Channel    string    `json:"channel"`
 	ChatID     string    `json:"chatID"`
-	Role string `json:"role"` // "user", "assistant", "system"
-	Type string `json:"type,omitempty"`
+	Role       string    `json:"role"` // "user", "assistant", "system"
 }
 
 type TaskInfo struct {
