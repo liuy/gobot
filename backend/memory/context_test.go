@@ -45,6 +45,12 @@ func TestBuild_BasicContext(t *testing.T) {
 		t.Fatalf("Append failed: %v", err)
 	}
 
+	// Wait for async write to complete
+	waitFor(t, 2*time.Second, func() bool {
+		recent := cache.GetRecent(chatID, 20)
+		return len(recent) > 0
+	})
+
 	builder := NewContextBuilder(cache, 10000)
 	ctx, err := builder.Build(msg)
 
@@ -80,6 +86,12 @@ func TestBuild_WithinBudget(t *testing.T) {
 			t.Fatalf("Append failed: %v", err)
 		}
 	}
+
+	// Wait for async writes to complete
+	waitFor(t, 2*time.Second, func() bool {
+		recent := cache.GetRecent(chatID, 20)
+		return len(recent) >= 5
+	})
 
 	builder := NewContextBuilder(cache, 1000)
 	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now(), ChatID: chatID}
@@ -118,6 +130,12 @@ func TestBuild_DropOldestRecent(t *testing.T) {
 			t.Fatalf("Append failed: %v", err)
 		}
 	}
+
+	// Wait for async writes to complete
+	waitFor(t, 2*time.Second, func() bool {
+		recent := cache.GetRecent(chatID, 20)
+		return len(recent) >= 20
+	})
 
 	builder := NewContextBuilder(cache, 50)
 	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now(), ChatID: chatID}
@@ -201,6 +219,12 @@ func TestBuild_TableDriven(t *testing.T) {
 					t.Fatalf("Append failed: %v", err)
 				}
 			}
+
+			// Wait for async writes to complete
+			waitFor(t, 2*time.Second, func() bool {
+				recent := cache.GetRecent(chatID, 20)
+				return len(recent) >= tt.numMessages
+			})
 
 			builder := NewContextBuilder(cache, tt.maxTokens)
 			currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now(), ChatID: chatID}

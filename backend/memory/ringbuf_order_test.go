@@ -31,6 +31,12 @@ func TestRecentBuffer_Order(t *testing.T) {
 		}
 	}
 
+	// Wait for async writes to complete
+	waitFor(t, 2*time.Second, func() bool {
+		recent := cache.GetRecent(chatID, 10)
+		return len(recent) >= 5
+	})
+
 	// Get recent messages
 	recent := cache.GetRecent(chatID, 10)
 

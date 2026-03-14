@@ -211,34 +211,6 @@ func TestGetLongterm_TTLCache(t *testing.T) {
 	}
 }
 
-func TestGetRecent_Fixed20(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	cache, err := NewMemoryCache(tmpDir)
-	if err != nil {
-		t.Fatalf("Failed to create MemoryCache: %v", err)
-	}
-	defer cache.Close()
-
-	for i := 0; i < 25; i++ {
-		msg := Message{
-			ID:        fmt.Sprintf("msg-%d", i),
-			Content:   "test",
-			Timestamp: time.Now(),
-			ChatID:    "test-chat",
-		}
-		if err := cache.Append(msg); err != nil {
-			t.Fatalf("Failed to append message: %v", err)
-		}
-	}
-
-	recent := cache.GetRecent("test-chat", 20)
-
-	if len(recent) != 20 {
-		t.Errorf("Expected 20 recent messages, got %d", len(recent))
-	}
-}
-
 func TestGetRecent_ReturnsInternalSlice(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -252,6 +224,12 @@ func TestGetRecent_ReturnsInternalSlice(t *testing.T) {
 	if err := cache.Append(msg); err != nil {
 		t.Fatalf("Failed to append message: %v", err)
 	}
+
+	// Wait for async write to complete
+	waitFor(t, 2*time.Second, func() bool {
+		recent := cache.GetRecent("test-chat", 20)
+		return len(recent) > 0
+	})
 
 	recent1 := cache.GetRecent("test-chat", 20)
 	recent2 := cache.GetRecent("test-chat", 20)
@@ -313,6 +291,12 @@ func TestAppend_UpdateRecentCache(t *testing.T) {
 		t.Fatalf("Append failed: %v", err)
 	}
 
+	// Wait for async write to complete
+	waitFor(t, 2*time.Second, func() bool {
+		recent := cache.GetRecent("test-chat", 20)
+		return len(recent) > 0
+	})
+
 	recent := cache.GetRecent("test-chat", 20)
 	if len(recent) != 1 {
 		t.Errorf("Expected 1 recent message, got %d", len(recent))
@@ -340,6 +324,12 @@ func TestAppend_PrependToRecent(t *testing.T) {
 	if err := cache.Append(msg2); err != nil {
 		t.Fatalf("Append msg2 failed: %v", err)
 	}
+
+	// Wait for async writes to complete
+	waitFor(t, 2*time.Second, func() bool {
+		recent := cache.GetRecent("test-chat", 20)
+		return len(recent) >= 2
+	})
 
 	recent := cache.GetRecent("test-chat", 20)
 	if len(recent) < 2 {
@@ -385,6 +375,12 @@ func TestAppend_Concurrent(t *testing.T) {
 	}
 
 	wg.Wait()
+
+	// Wait for async writes to complete
+	waitFor(t, 3*time.Second, func() bool {
+		recent := cache.GetRecent(chatID, 20)
+		return len(recent) >= 20
+	})
 
 	recent := cache.GetRecent(chatID, 20)
 	if len(recent) != 20 {
@@ -503,6 +499,12 @@ func TestMemoryCache_ConcurrentReads(t *testing.T) {
 	if err := cache.Append(msg); err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
+
+	// Wait for async write to complete
+	waitFor(t, 2*time.Second, func() bool {
+		recent := cache.GetRecent(chatID, 20)
+		return len(recent) > 0
+	})
 
 	var wg sync.WaitGroup
 	numReaders := 50

@@ -17,47 +17,10 @@ const (
 	longtermCheckTTL = 30 * time.Second
 	updateChanSize   = 1000
 	updateInterval   = 100 * time.Millisecond
-	recentBufferSize = 20
 )
 
-// recentBuffer is a ring buffer for recent messages.
-// It stores messages in chronological order (oldest first) and automatically
-// overwrites the oldest message when full.
-// Thread-unsafe: callers must hold lock.
-type recentBuffer struct {
-	data  [recentBufferSize]Message
-	head  int // next write position
-	count int // current message count
-}
-
-// Add adds a message to the buffer. O(1) operation.
-func (r *recentBuffer) Add(msg Message) {
-	r.data[r.head] = msg
-	r.head = (r.head + 1) % recentBufferSize
-	if r.count < recentBufferSize {
-		r.count++
-	}
-}
-
-// GetByChatID returns messages for a specific chatID in chronological order (oldest first).
-func (r *recentBuffer) GetByChatID(chatID string) []Message {
-	if r.count == 0 {
-		return nil
-	}
-	var result []Message
-	// start points to the oldest message: (head - count + size) % size
-	start := (r.head - r.count + recentBufferSize) % recentBufferSize
-	// Traverse from oldest to newest: iterate forward from start
-	for i := 0; i < r.count; i++ {
-		idx := (start + i) % recentBufferSize
-		msg := r.data[idx]
-		if msg.ChatID == chatID {
-			result = append(result, msg)
-		}
-	}
-	return result
-}
-
+// MemoryCache manages message storage using cold.db (SQLite).
+// All queries go directly to cold.db which has its own page cache.
 type MemoryCache struct {
 	dataDir string
 
@@ -65,9 +28,6 @@ type MemoryCache struct {
 	longtermMod       time.Time
 	longtermMu        sync.RWMutex
 	longtermLastCheck time.Time
-
-	recent   recentBuffer
-	recentMu sync.RWMutex
 
 	coldDB *sql.DB
 
@@ -99,7 +59,6 @@ func NewMemoryCache(dataDir string) (*MemoryCache, error) {
 		updateChan: make(chan Message, updateChanSize),
 		stopChan:   make(chan struct{}),
 		nowFunc:    time.Now,
-		// recent (ring buffer) is zero-initialized automatically
 	}
 
 	longtermPath := filepath.Join(memoryDir, "longterm.md")
@@ -194,39 +153,25 @@ func (c *MemoryCache) GetLongterm() (string, error) {
 	return content, nil
 }
 
-// GetRecent returns recent messages for a specific chatID, limited by the given limit.
-// Returns a new slice, safe for callers to modify.
-// If chatID is empty, returns empty slice with a warning.
-// Falls back to cold.db when memory cache is empty for the given chatID.
+// GetRecent returns recent messages for a specific chatID from cold.db.
+// Uses SQLite which has its own internal page cache.
 func (c *MemoryCache) GetRecent(chatID string, limit int) []Message {
 	if chatID == "" {
 		log.Warn("[memory] GetRecent called with empty chatID, returning empty slice")
 		return []Message{}
 	}
 
-	c.recentMu.RLock()
-	filtered := c.recent.GetByChatID(chatID)
-	c.recentMu.RUnlock()
-
-	if len(filtered) == 0 {
-		messages, err := getRecentMessages(c.coldDB, chatID, limit)
-		if err != nil {
-			log.Warn("[memory] cold.db fallback failed: err=%v", err)
-			return []Message{}
-		}
-		return messages
+	messages, err := getRecentMessages(c.coldDB, chatID, limit)
+	if err != nil {
+		log.Warn("[memory] GetRecent failed: err=%v", err)
+		return []Message{}
 	}
 
-	if len(filtered) > limit {
-		filtered = filtered[:limit]
-	}
-
-	return filtered // already in chronological order (oldest first)
+	log.Info("[memory] GetRecent: chatID=%s, limit=%d, count=%d", chatID, limit, len(messages))
+	return messages
 }
 
-// AddMessage adds a message to the memory system.
-// This is an async operation: Recent is updated immediately, Cold and Hot are updated asynchronously.
-// Returns immediately (~1µs) regardless of system load.
+// AddMessage adds a message to cold.db asynchronously.
 func (c *MemoryCache) AddMessage(msg Message) error {
 	// Check if closed
 	if atomic.LoadInt32(&c.closed) == 1 {
@@ -245,12 +190,9 @@ func (c *MemoryCache) AddMessage(msg Message) error {
 		return fmt.Errorf("message timestamp cannot be zero")
 	}
 
-	// Update Recent immediately (synchronous, ~100ns)
-	c.recentMu.Lock()
-	c.recent.Add(msg)
-	c.recentMu.Unlock()
+	log.Info("[memory] AddMessage: id=%s, chatID=%s, role=%s", msg.ID, msg.ChatID, msg.Role)
 
-	// Queue for async Cold + Hot update
+	// Queue for async Cold write
 	select {
 	case c.updateChan <- msg:
 	default:
@@ -265,7 +207,7 @@ func (c *MemoryCache) Append(msg Message) error {
 	return c.AddMessage(msg)
 }
 
-// startWorker starts the unified async worker for Cold + Hot updates.
+// startWorker starts the async worker for Cold writes.
 func (c *MemoryCache) startWorker() {
 	c.workerWg.Add(1)
 	go func() {
@@ -323,8 +265,3 @@ func (c *MemoryCache) Search(query string) ([]Message, error) {
 	return searchMessages(c.coldDB, query)
 }
 
-// Flush waits for all pending messages to be processed.
-// Useful for testing.
-func (c *MemoryCache) Flush() {
-	time.Sleep(updateInterval + 50*time.Millisecond)
-}

@@ -174,6 +174,12 @@ func TestGetRecent_RowsError(t *testing.T) {
 		}
 	}
 
+	// Wait for async writes to complete
+	waitFor(t, 3*time.Second, func() bool {
+		recent := cache.GetRecent(chatID, 20)
+		return len(recent) >= 20
+	})
+
 	recent := cache.GetRecent(chatID, 20)
 
 	if len(recent) != 20 {
