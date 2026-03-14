@@ -9,14 +9,54 @@ var minimaxParams = map[string]any{
 
 func registerMinimax() {
 	RegisterProvider("minimax", &minimaxBuilder{
-		apiBase: "https://api.minimaxi.com/v1",
-		params:  minimaxParams,
+		apiBase:         "https://api.minimaxi.com/v1",
+		params:          minimaxParams,
+		extractReasoning: minimaxExtractReasoning,
 	})
 }
 
 type minimaxBuilder struct {
-	apiBase string
-	params  map[string]any
+	apiBase         string
+	params          map[string]any
+	extractReasoning ExtractReasoningFunc
+}
+
+// minimaxExtractReasoning extracts reasoning content from MiniMax API response.
+// MiniMax returns reasoning in choices[].delta.reasoning_details or choices[].message.reasoning_details.
+func minimaxExtractReasoning(chunk map[string]any) string {
+	choices, ok := chunk["choices"].([]any)
+	if !ok || len(choices) == 0 {
+		return ""
+	}
+
+	choice, ok := choices[0].(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	// Try delta.reasoning_details first (streaming mode)
+	if delta, ok := choice["delta"].(map[string]any); ok {
+		if details, ok := delta["reasoning_details"].([]any); ok && len(details) > 0 {
+			if detail, ok := details[0].(map[string]any); ok {
+				if text, ok := detail["text"].(string); ok {
+					return text
+				}
+			}
+		}
+	}
+
+	// Try message.reasoning_details (non-streaming mode)
+	if msg, ok := choice["message"].(map[string]any); ok {
+		if details, ok := msg["reasoning_details"].([]any); ok && len(details) > 0 {
+			if detail, ok := details[0].(map[string]any); ok {
+				if text, ok := detail["text"].(string); ok {
+					return text
+				}
+			}
+		}
+	}
+
+	return ""
 }
 
 func (b *minimaxBuilder) Build(cfg *ModelConfig) (LLMProvider, string, error) {
@@ -30,6 +70,7 @@ func (b *minimaxBuilder) Build(cfg *ModelConfig) (LLMProvider, string, error) {
 		apiBase,
 		cfg.Proxy,
 		WithParams(b.params),
+		WithExtractReasoning(b.extractReasoning),
 	)
 	return p, "", nil
 }

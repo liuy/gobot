@@ -190,7 +190,6 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 	content, _ := req.Params["message"].(string)
 	sessionKey, _ := req.Params["sessionKey"].(string)
 	runId := req.ID
-	log.Info("[HandleChatSend] received message: sessionKey=%s, content=%s, runId=%s", sessionKey, content, runId)
 	if ChatProvider == nil {
 		return fmt.Errorf("chat provider not configured")
 	}
@@ -452,7 +451,7 @@ func HandleChatHistory(conn *gows.Conn, req WSRequest) error {
 	messages := []any{}
 	if MemoryCache != nil {
 		recent := MemoryCache.GetRecent(sessionKey, 20)
-		log.Info("[HandleChatHistory] got %d messages from cache", len(recent))
+		log.Info("[HandleChatHistory] session: %s got %d messages from cache", sessionKey, len(recent))
 		messages = make([]any, 0, len(recent))
 		for _, msg := range recent {
 			messages = append(messages, msg)
