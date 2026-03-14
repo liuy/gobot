@@ -318,10 +318,16 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 
 	var finalContent string
 	var finalReasoning string
+	var finalStopReason string
 	sentReasoningBlock := false
 	sentContentBlock := false
 
 	for chunk := range ch {
+		// Capture stop reason from the last chunk
+		if chunk.StopReason != "" {
+			finalStopReason = chunk.StopReason
+		}
+
 		// Handle reasoning/thinking stream
 		if chunk.Thinking != "" {
 			if !sentReasoningBlock {
@@ -400,11 +406,12 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 		}
 
 		if err := MemoryCache.AddMessage(memory.Message{
-			ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
-			Content:   msgContent,
-			Timestamp: time.Now(),
-			Role:      "assistant",
-			ChatID:    sessionKey,
+			ID:         fmt.Sprintf("%d", time.Now().UnixNano()),
+			Content:    msgContent,
+			Timestamp:  time.Now(),
+			Role:       "assistant",
+			ChatID:     sessionKey,
+			StopReason: finalStopReason,
 		}); err != nil {
 			return err
 		}

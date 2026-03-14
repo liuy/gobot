@@ -15,13 +15,14 @@ type ContentPart struct {
 }
 
 type Message struct {
-	ID         string    `json:"id"`
-	Content    any       `json:"content"` // string | []ContentPart | nil
-	Timestamp  time.Time `json:"timestamp"`
-	HumanIDs   []string  `json:"humanIDs"`
-	Channel    string    `json:"channel"`
-	ChatID     string    `json:"chatID"`
-	Role       string    `json:"role"` // "user", "assistant", "system"
+	ID          string    `json:"id"`
+	Content     any       `json:"content"` // string | []ContentPart | nil
+	Timestamp   time.Time `json:"timestamp"`
+	HumanIDs    []string  `json:"humanIDs"`
+	Channel     string    `json:"channel"`
+	ChatID      string    `json:"chatID"`
+	Role        string    `json:"role"` // "user", "assistant", "system"
+	StopReason  string    `json:"stopReason,omitempty"` // "stop", "length", "content_filter", "error"
 }
 
 type TaskInfo struct {

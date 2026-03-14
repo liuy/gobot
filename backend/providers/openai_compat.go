@@ -114,6 +114,7 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, model strin
 		Content:          payload.Choices[0].Message.Content,
 		ReasoningContent: payload.Choices[0].Message.Thinking + payload.Choices[0].Message.ReasoningContent,
 		FinishReason:     payload.Choices[0].FinishReason,
+		StopReason:       payload.Choices[0].FinishReason,
 	}
 	if payload.Usage != nil {
 		out.Usage = &UsageInfo{
@@ -169,7 +170,7 @@ func (p *HTTPProvider) ChatStream(ctx context.Context, messages []Message, model
 			payload := strings.Join(eventData, "\n")
 			eventData = nil
 			if payload == "[DONE]" {
-				ch <- types.StreamChunk{IsDone: true}
+				ch <- types.StreamChunk{StopReason: "stop"}
 				return
 			}
 
@@ -197,9 +198,9 @@ func (p *HTTPProvider) ChatStream(ctx context.Context, messages []Message, model
 					reasoning = p.extractReasoning(rawChunk)
 				}
 				ch <- types.StreamChunk{
-					Content:  c.Delta.Content,
-					Thinking: reasoning,
-					IsDone:   c.FinishReason != "",
+					Content:    c.Delta.Content,
+					Thinking:   reasoning,
+					StopReason: c.FinishReason,
 				}
 			}
 		}

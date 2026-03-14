@@ -32,7 +32,7 @@ func (m *mockLLMProvider) ChatStream(ctx context.Context, messages []providers.M
 		for _, chunk := range m.contentChunks {
 			ch <- types.StreamChunk{Content: chunk}
 		}
-		ch <- types.StreamChunk{IsDone: true}
+		ch <- types.StreamChunk{StopReason: "stop"}
 		close(ch)
 	}()
 	return ch, nil

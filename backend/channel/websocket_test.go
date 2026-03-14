@@ -23,7 +23,7 @@ func (s *stubChatProvider) ChatStream(ctx context.Context, messages []providers.
 	go func() {
 		ch <- types.StreamChunk{Thinking: "thinking"}
 		ch <- types.StreamChunk{Content: "ok"}
-		ch <- types.StreamChunk{IsDone: true}
+		ch <- types.StreamChunk{StopReason: "stop"}
 		close(ch)
 	}()
 	return ch, nil

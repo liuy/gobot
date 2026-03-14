@@ -50,6 +50,7 @@ type LLMResponse struct {
 	Usage            *UsageInfo     `json:"usage,omitempty"`
 	IsStreaming      bool           `json:"-"`
 	IsDone           bool           `json:"-"`
+	StopReason       string         `json:"stopReason,omitempty"` // Canonical stop reason: "stop", "length", "content_filter", "error"
 	Extensions       map[string]any `json:"-"`
 }
 

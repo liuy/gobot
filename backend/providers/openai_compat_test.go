@@ -257,8 +257,8 @@ func TestHTTPProviderChatStreamSSEAndDone(t *testing.T) {
 	if len(chunks) < 2 {
 		t.Fatalf("chunks len = %d, want >= 2", len(chunks))
 	}
-	if !chunks[len(chunks)-1].IsDone {
-		t.Fatalf("final chunk IsDone = false, want true")
+	if chunks[len(chunks)-1].StopReason == "" {
+		t.Fatalf("final chunk StopReason = empty, want 'stop'")
 	}
 }
 
@@ -337,18 +337,18 @@ func TestHTTPProviderChatStreamWithToolCalls(t *testing.T) {
 
 	var gotDone bool
 	for chunk := range ch {
-		if chunk.IsDone {
+		if chunk.StopReason != "" {
 			gotDone = true
 		}
 	}
 	if !gotDone {
-		t.Fatal("did not receive IsDone chunk")
+		t.Fatal("did not receive StopReason chunk")
 	}
 }
 
 func TestHTTPProviderChatStreamTruncatedSSEHandled(t *testing.T) {
 	// Truncated SSE is now silently ignored in the goroutine
-	// The channel will just close without IsDone
+	// The channel will just close without StopReason
 	client := &mockHTTPClient{do: func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -388,7 +388,7 @@ func TestHTTPProviderChatStreamConsumesAll(t *testing.T) {
 	var gotDone bool
 	for chunk := range ch {
 		gotContent += chunk.Content
-		if chunk.IsDone {
+		if chunk.StopReason != "" {
 			gotDone = true
 		}
 	}
@@ -396,7 +396,7 @@ func TestHTTPProviderChatStreamConsumesAll(t *testing.T) {
 		t.Fatalf("content = %q, want %q", gotContent, "x")
 	}
 	if !gotDone {
-		t.Fatal("did not get IsDone")
+		t.Fatal("did not get StopReason")
 	}
 }
 
