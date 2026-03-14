@@ -146,7 +146,6 @@ export function useOpenClawRuntime({
   const gatewayTokenRef = useRef<string | null>(null);
   const connectNonceRef = useRef<string | null>(null);
 
-  const historyPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hiddenAtRef = useRef<number | null>(null);
   const lastResumeSyncAtRef = useRef(0);
   const lastSocketActivityAtRef = useRef(Date.now());
@@ -204,19 +203,6 @@ export function useOpenClawRuntime({
       params: { sessionKey: sessionKeyRef.current },
     });
   }, [sendWS]);
-
-  const startHistoryPolling = useCallback(() => {
-    if (historyPollRef.current) return;
-    historyPollRef.current = setInterval(() => {
-      requestHistory();
-    }, 3000);
-  }, [requestHistory]);
-
-  const stopHistoryPolling = useCallback(() => {
-    if (!historyPollRef.current) return;
-    clearInterval(historyPollRef.current);
-    historyPollRef.current = null;
-  }, []);
 
   const clearStreamingRuntimeState = useCallback((opts?: { clearRunId?: boolean }) => {
     setAwaitingResponse(false);
@@ -361,9 +347,7 @@ export function useOpenClawRuntime({
       setAwaitingResponse(true);
       setIsStreaming(true);
       setThinkingStartTime(Date.now());
-      startHistoryPolling();
     } else {
-      stopHistoryPolling();
       clearStreamingRuntimeState();
     }
 
@@ -401,8 +385,6 @@ export function useOpenClawRuntime({
     setIsStreaming,
     setMessages,
     setServerCommands,
-    startHistoryPolling,
-    stopHistoryPolling,
   ]);
 
   const applyRunDuration = useCallback((runId: string, runDuration: number) => {
@@ -490,7 +472,6 @@ export function useOpenClawRuntime({
           notifyForRun(payload.runId || activeRunIdRef.current);
           applyRunDuration(payload.runId, runDuration);
 
-          stopHistoryPolling();
           clearStreamingRuntimeState({ clearRunId: true });
           thinkTagStateRef.current = { insideThinkTag: false, tagBuffer: "" };
           subagentStore.clearAll();
@@ -498,32 +479,26 @@ export function useOpenClawRuntime({
           fetchedSubhistoryRef.current.clear();
         }
 
-        if (!queuedMessageRef.current) requestHistory();
         break;
       }
 
       case "aborted": {
         if (activeRunIdRef.current && payload.runId && payload.runId !== activeRunIdRef.current) {
-          if (!queuedMessageRef.current) requestHistory();
           break;
         }
         markRunEnd();
-        stopHistoryPolling();
         clearStreamingRuntimeState({ clearRunId: true });
         subagentStore.clearAll();
         handleUnpinSubagent();
         fetchedSubhistoryRef.current.clear();
-        if (!queuedMessageRef.current) requestHistory();
         break;
       }
 
       case "error": {
         if (activeRunIdRef.current && payload.runId && payload.runId !== activeRunIdRef.current) {
-          if (!queuedMessageRef.current) requestHistory();
           break;
         }
         markRunEnd();
-        stopHistoryPolling();
         clearStreamingRuntimeState({ clearRunId: true });
         const errorText = payload.errorMessage || "Chat error";
         const errorMsg: Message = {
@@ -537,7 +512,6 @@ export function useOpenClawRuntime({
         subagentStore.clearAll();
         handleUnpinSubagent();
         fetchedSubhistoryRef.current.clear();
-        if (!queuedMessageRef.current) requestHistory();
         break;
       }
     }
@@ -554,7 +528,6 @@ export function useOpenClawRuntime({
     setMessages,
     setServerCommands,
     setStreamingId,
-    stopHistoryPolling,
     subagentStore,
   ]);
 
@@ -578,15 +551,11 @@ export function useOpenClawRuntime({
         if (isExternalRun) {
           setAwaitingResponse(true);
           setThinkingStartTime(Date.now());
-          startHistoryPolling();
         }
       } else if (phase === "end" || phase === "error") {
         const runDuration = markRunEnd();
         stopRunTimer();
         applyRunDuration(payload.runId, runDuration);
-        if (historyPollRef.current) {
-          requestHistory();
-        }
       }
       return;
     }
@@ -640,7 +609,6 @@ export function useOpenClawRuntime({
     setIsStreaming,
     setMessages,
     setThinkingStartTime,
-    startHistoryPolling,
     subagentStore,
   ]);
 
@@ -785,7 +753,6 @@ export function useOpenClawRuntime({
       setIsInitialConnecting(true);
     },
     onClose: () => {
-      stopHistoryPolling();
       clearStreamingRuntimeState();
       hasAutoScrolledInitialHistoryRef.current = false;
     },
@@ -875,7 +842,6 @@ export function useOpenClawRuntime({
   }, [markEstablished]);
 
   const clearForSessionSwitch = useCallback(() => {
-    stopHistoryPolling();
     clearStreamingRuntimeState({ clearRunId: true });
     setMessages([]);
     setHistoryLoaded(false);
@@ -890,7 +856,6 @@ export function useOpenClawRuntime({
     setCurrentModel,
     setHistoryLoaded,
     setMessages,
-    stopHistoryPolling,
     subagentStore,
   ]);
 
@@ -951,7 +916,6 @@ export function useOpenClawRuntime({
     sessionKeyRef,
     activeRunIdRef,
     gatewayTokenRef,
-    historyPollRef,
     fetchedSubhistoryRef,
     sessions,
     sessionsLoading,
