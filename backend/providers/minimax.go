@@ -7,54 +7,16 @@ var minimaxParams = map[string]any{
 	"reasoning_split": true,
 }
 
-func minimaxExtractReasoning(chunk map[string]any) string {
-	choices, ok := chunk["choices"].([]any)
-	if !ok || len(choices) == 0 {
-		return ""
-	}
-
-	choice, ok := choices[0].(map[string]any)
-	if !ok {
-		return ""
-	}
-
-	// Try delta.reasoning_details first (streaming mode)
-	if delta, ok := choice["delta"].(map[string]any); ok {
-		if details, ok := delta["reasoning_details"].([]any); ok && len(details) > 0 {
-			if detail, ok := details[0].(map[string]any); ok {
-				if text, ok := detail["text"].(string); ok {
-					return text
-				}
-			}
-		}
-	}
-
-	// Try message.reasoning_details (non-streaming mode)
-	if msg, ok := choice["message"].(map[string]any); ok {
-		if details, ok := msg["reasoning_details"].([]any); ok && len(details) > 0 {
-			if detail, ok := details[0].(map[string]any); ok {
-				if text, ok := detail["text"].(string); ok {
-					return text
-				}
-			}
-		}
-	}
-
-	return ""
-}
-
 func registerMinimax() {
 	RegisterProvider("minimax", &minimaxBuilder{
-		apiBase:          "https://api.minimaxi.com/v1",
-		params:           minimaxParams,
-		extractReasoning: minimaxExtractReasoning,
+		apiBase: "https://api.minimaxi.com/v1",
+		params:  minimaxParams,
 	})
 }
 
 type minimaxBuilder struct {
-	apiBase          string
-	params           map[string]any
-	extractReasoning ExtractReasoningFunc
+	apiBase string
+	params  map[string]any
 }
 
 func (b *minimaxBuilder) Build(cfg *ModelConfig) (LLMProvider, string, error) {
@@ -68,7 +30,6 @@ func (b *minimaxBuilder) Build(cfg *ModelConfig) (LLMProvider, string, error) {
 		apiBase,
 		cfg.Proxy,
 		WithParams(b.params),
-		WithExtractReasoning(b.extractReasoning),
 	)
 	return p, "", nil
 }

@@ -83,9 +83,10 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, model strin
 	var payload struct {
 		Choices []struct {
 			Message struct {
-				Content   string `json:"content"`
-				Thinking  string `json:"thinking"`
-				ToolCalls []struct {
+				Content           string `json:"content"`
+				Thinking          string `json:"thinking"`
+				ReasoningContent  string `json:"reasoning_content"`
+				ToolCalls         []struct {
 					ID       string `json:"id"`
 					Type     string `json:"type"`
 					Function struct {
@@ -111,7 +112,7 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, model strin
 
 	out := &LLMResponse{
 		Content:          payload.Choices[0].Message.Content,
-		ReasoningContent: payload.Choices[0].Message.Thinking,
+		ReasoningContent: payload.Choices[0].Message.Thinking + payload.Choices[0].Message.ReasoningContent,
 		FinishReason:     payload.Choices[0].FinishReason,
 	}
 	if payload.Usage != nil {

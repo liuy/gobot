@@ -16,50 +16,21 @@ var zhipuCodingParams = map[string]any{
 	"thinking":    map[string]string{"type": "enabled"},
 }
 
-func zhipuExtractReasoning(chunk map[string]any) string {
-	choices, ok := chunk["choices"].([]any)
-	if !ok || len(choices) == 0 {
-		return ""
-	}
-
-	choice, ok := choices[0].(map[string]any)
-	if !ok {
-		return ""
-	}
-
-	if delta, ok := choice["delta"].(map[string]any); ok {
-		if thinking, ok := delta["thinking"].(string); ok && thinking != "" {
-			return thinking
-		}
-	}
-
-	if msg, ok := choice["message"].(map[string]any); ok {
-		if thinking, ok := msg["thinking"].(string); ok && thinking != "" {
-			return thinking
-		}
-	}
-
-	return ""
-}
-
 func registerZhipu() {
 	RegisterProvider("zhipu", &zhipuBuilder{
-		apiBase:          "https://open.bigmodel.cn/api/paas/v4",
-		params:           zhipuParams,
-		extractReasoning: zhipuExtractReasoning,
+		apiBase: "https://open.bigmodel.cn/api/paas/v4",
+		params:  zhipuParams,
 	})
 
 	RegisterProvider("zhipu-coding", &zhipuBuilder{
-		apiBase:          "https://open.bigmodel.cn/api/coding/paas/v4",
-		params:           zhipuCodingParams,
-		extractReasoning: zhipuExtractReasoning,
+		apiBase: "https://open.bigmodel.cn/api/coding/paas/v4",
+		params:  zhipuCodingParams,
 	})
 }
 
 type zhipuBuilder struct {
-	apiBase          string
-	params           map[string]any
-	extractReasoning ExtractReasoningFunc
+	apiBase string
+	params  map[string]any
 }
 
 func (b *zhipuBuilder) Build(cfg *ModelConfig) (LLMProvider, string, error) {
@@ -73,7 +44,6 @@ func (b *zhipuBuilder) Build(cfg *ModelConfig) (LLMProvider, string, error) {
 		apiBase,
 		cfg.Proxy,
 		WithParams(b.params),
-		WithExtractReasoning(b.extractReasoning),
 	)
 	return p, "", nil
 }
