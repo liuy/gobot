@@ -45,7 +45,6 @@ interface ChatViewportProps {
   zenMode: boolean;
   isRunActive: boolean;
   awaitingResponse: boolean;
-  thinkingStartTime: number | null;
   thinkingLabel?: string;
   runningDuration: number | null;
   quotePopup: { x: number; y: number; text: string } | null;
@@ -78,7 +77,6 @@ export function ChatViewport({
   zenMode,
   isRunActive: _isRunActive,
   awaitingResponse,
-  thinkingStartTime,
   thinkingLabel,
   runningDuration,
   quotePopup,
@@ -745,7 +743,7 @@ export function ChatViewport({
               </React.Fragment>
             );
           })}
-          <ThinkingIndicator visible={showThinkingIndicator} startTime={thinkingStartTime ?? undefined} label={thinkingLabel} />
+          <ThinkingIndicator visible={showThinkingIndicator} label={thinkingLabel} />
           <div ref={bottomRef} />
         </div>
       </main>

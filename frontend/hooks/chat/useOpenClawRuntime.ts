@@ -64,6 +64,7 @@ interface UseOpenClawRuntimeOptions extends StreamActions {
   onHistoryLoaded: () => void;
   beginContentArrival: () => void;
   setThinkingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
+  startRunTimer: (startTime?: number) => void;
   markRunStart: () => void;
   markRunEnd: () => number;
   stopRunTimer: () => number | null;
@@ -123,6 +124,7 @@ export function useOpenClawRuntime({
   onHistoryLoaded,
   beginContentArrival,
   setThinkingStartTime,
+  startRunTimer,
   markRunStart,
   markRunEnd,
   stopRunTimer,
@@ -545,6 +547,7 @@ export function useOpenClawRuntime({
         const isExternalRun = !activeRunIdRef.current;
         markRunStart();
         resetRunTimer();
+        startRunTimer(Date.now());
         setIsStreaming(true);
         activeRunIdRef.current = payload.runId;
         thinkTagStateRef.current = { insideThinkTag: false, tagBuffer: "" };

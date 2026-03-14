@@ -329,6 +329,7 @@ export default function Home() {
     onHistoryLoaded: scrollToBottom,
     beginContentArrival,
     setThinkingStartTime,
+    startRunTimer,
     markRunStart,
     markRunEnd,
     stopRunTimer,
@@ -623,7 +624,6 @@ export default function Home() {
         zenMode={zenMode}
         isRunActive={isRunActive}
         awaitingResponse={awaitingResponse}
-        thinkingStartTime={thinkingStartTime}
         thinkingLabel={thinkingLabel}
         runningDuration={runningDuration}
         quotePopup={quotePopup}

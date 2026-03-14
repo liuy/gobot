@@ -65,7 +65,7 @@ describe("ChatViewport - Running Duration", () => {
     zenMode: false,
     isRunActive: false,
     awaitingResponse: false,
-    thinkingStartTime: null,
+    thinkingLabel: undefined,
     runningDuration: null,
     quotePopup: null,
     quotePopupRef: { current: null },
