@@ -53,7 +53,7 @@ func BenchmarkAppend(b *testing.B) {
 		msg := Message{
 			ID:        fmt.Sprintf("bench-%d", i), // 修复：唯一 ID
 			Content:   "Benchmark test message",
-			Timestamp: time.Now(),
+			Timestamp: time.Now().UnixMilli(),
 		}
 		if err := cache.Append(msg); err != nil {
 			b.Fatalf("Append failed: %v", err)
@@ -75,7 +75,7 @@ func BenchmarkSearch(b *testing.B) {
 		msg := Message{
 			ID:        fmt.Sprintf("search-%d", i), // 修复：唯一 ID
 			Content:   "Benchmark search test message",
-			Timestamp: time.Now(),
+			Timestamp: time.Now().UnixMilli(),
 		}
 		if err := cache.Append(msg); err != nil {
 			b.Fatalf("Append failed: %v", err)
@@ -107,7 +107,7 @@ func BenchmarkContextBuilder_Build(b *testing.B) {
 		msg := Message{
 			ID:        fmt.Sprintf("ctx-%d", i),
 			Content:   "Benchmark context test",
-			Timestamp: time.Now(),
+			Timestamp: time.Now().UnixMilli(),
 		}
 		_, err := builder.Build(msg)
 		if err != nil {

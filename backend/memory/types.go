@@ -1,6 +1,8 @@
 package memory
 
-import "time"
+import (
+	"time"
+)
 
 // ContentPart represents a single part of a message content, compatible with OpenAI/Anthropic format
 type ContentPart struct {
@@ -17,7 +19,7 @@ type ContentPart struct {
 type Message struct {
 	ID          string    `json:"id"`
 	Content     any       `json:"content"` // string | []ContentPart | nil
-	Timestamp   time.Time `json:"timestamp"`
+	Timestamp   int64     `json:"timestamp"`
 	HumanIDs    []string  `json:"humanIDs"`
 	Channel     string    `json:"channel"`
 	ChatID      string    `json:"chatID"`

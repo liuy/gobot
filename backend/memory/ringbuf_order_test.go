@@ -23,7 +23,7 @@ func TestRecentBuffer_Order(t *testing.T) {
 		msg := Message{
 			ID:        fmt.Sprintf("msg-%d", i),
 			Content:   fmt.Sprintf("Message %d", i),
-			Timestamp: time.Now().Add(time.Duration(i) * time.Second), // increasing timestamps
+			Timestamp: time.Now().Add(time.Duration(i) * time.Second).UnixMilli(), // increasing timestamps
 			ChatID:    chatID,
 		}
 		if err := cache.Append(msg); err != nil {
@@ -47,7 +47,7 @@ func TestRecentBuffer_Order(t *testing.T) {
 
 	// Check that messages are in chronological order (oldest first)
 	for i := 0; i < len(recent)-1; i++ {
-		if recent[i].Timestamp.After(recent[i+1].Timestamp) {
+		if recent[i].Timestamp > recent[i+1].Timestamp {
 			t.Errorf("Messages not in chronological order: msg[%d]=%s (ts=%v) is after msg[%d]=%s (ts=%v)",
 				i, recent[i].ID, recent[i].Timestamp,
 				i+1, recent[i+1].ID, recent[i+1].Timestamp)
@@ -81,7 +81,7 @@ func TestRecentBuffer_AfterRestart(t *testing.T) {
 		msg := Message{
 			ID:        fmt.Sprintf("msg-%d", i),
 			Content:   fmt.Sprintf("Message %d", i),
-			Timestamp: time.Now().Add(time.Duration(i) * time.Second),
+			Timestamp: time.Now().Add(time.Duration(i) * time.Second).UnixMilli(),
 			ChatID:    chatID,
 		}
 		if err := cache1.Append(msg); err != nil {
@@ -116,7 +116,7 @@ func TestRecentBuffer_AfterRestart(t *testing.T) {
 
 	// Check chronological order
 	for i := 0; i < len(recent)-1; i++ {
-		if recent[i].Timestamp.After(recent[i+1].Timestamp) {
+		if recent[i].Timestamp > recent[i+1].Timestamp {
 			t.Errorf("Messages not in chronological order after restart: msg[%d]=%s is after msg[%d]=%s",
 				i, recent[i].ID, i+1, recent[i+1].ID)
 		}

@@ -167,7 +167,6 @@ func (c *MemoryCache) GetRecent(chatID string, limit int) []Message {
 		return []Message{}
 	}
 
-	log.Info("[memory] GetRecent: chatID=%s, limit=%d, count=%d", chatID, limit, len(messages))
 	return messages
 }
 
@@ -186,11 +185,9 @@ func (c *MemoryCache) AddMessage(msg Message) error {
 	if strings.TrimSpace(ExtractTextFromContent(msg.Content)) == "" {
 		return fmt.Errorf("message content cannot be empty")
 	}
-	if msg.Timestamp.IsZero() {
+	if msg.Timestamp == 0 {
 		return fmt.Errorf("message timestamp cannot be zero")
 	}
-
-	log.Info("[memory] AddMessage: id=%s, chatID=%s, role=%s", msg.ID, msg.ChatID, msg.Role)
 
 	// Queue for async Cold write
 	select {

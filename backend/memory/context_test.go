@@ -38,7 +38,7 @@ func TestBuild_BasicContext(t *testing.T) {
 	msg := Message{
 		ID:        "test-1",
 		Content:   "Test message",
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UnixMilli(),
 		ChatID:    chatID,
 	}
 	if err := cache.Append(msg); err != nil {
@@ -79,7 +79,7 @@ func TestBuild_WithinBudget(t *testing.T) {
 		msg := Message{
 			ID:        string(rune('a' + i)),
 			Content:   "short",
-			Timestamp: time.Now(),
+			Timestamp: time.Now().UnixMilli(),
 			ChatID:    chatID,
 		}
 		if err := cache.Append(msg); err != nil {
@@ -94,7 +94,7 @@ func TestBuild_WithinBudget(t *testing.T) {
 	})
 
 	builder := NewContextBuilder(cache, 1000)
-	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now(), ChatID: chatID}
+	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now().UnixMilli(), ChatID: chatID}
 	ctx, err := builder.Build(currentMsg)
 
 	if err != nil {
@@ -123,7 +123,7 @@ func TestBuild_DropOldestRecent(t *testing.T) {
 		msg := Message{
 			ID:        id,
 			Content:   "This is a message with enough content to consume tokens",
-			Timestamp: time.Now().Add(time.Duration(i) * time.Second),
+			Timestamp: time.Now().Add(time.Duration(i) * time.Second).UnixMilli(),
 			ChatID:    chatID,
 		}
 		if err := cache.Append(msg); err != nil {
@@ -138,7 +138,7 @@ func TestBuild_DropOldestRecent(t *testing.T) {
 	})
 
 	builder := NewContextBuilder(cache, 50)
-	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now(), ChatID: chatID}
+	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now().UnixMilli(), ChatID: chatID}
 	ctx, err := builder.Build(currentMsg)
 
 	if err != nil {
@@ -212,7 +212,7 @@ func TestBuild_TableDriven(t *testing.T) {
 				msg := Message{
 					ID:        fmt.Sprintf("msg-%02d", i),
 					Content:   "Test message content for token counting",
-					Timestamp: time.Now(),
+					Timestamp: time.Now().UnixMilli(),
 					ChatID:    chatID,
 				}
 				if err := cache.Append(msg); err != nil {
@@ -227,7 +227,7 @@ func TestBuild_TableDriven(t *testing.T) {
 			})
 
 			builder := NewContextBuilder(cache, tt.maxTokens)
-			currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now(), ChatID: chatID}
+			currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now().UnixMilli(), ChatID: chatID}
 			ctx, err := builder.Build(currentMsg)
 
 			if err != nil {
@@ -258,7 +258,7 @@ func TestBuild_WithLongterm(t *testing.T) {
 
 	chatID := "test-chat-longterm"
 	builder := NewContextBuilder(cache, 10000)
-	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now(), ChatID: chatID}
+	currentMsg := Message{ID: "current", Content: "test", Timestamp: time.Now().UnixMilli(), ChatID: chatID}
 	ctx, err := builder.Build(currentMsg)
 
 	if err != nil {
@@ -321,7 +321,7 @@ func TestContextBuilder_ZeroMaxTokens(t *testing.T) {
 	builder := NewContextBuilder(cache, 0)
 
 	chatID := "test-chat-zero"
-	msg := Message{ID: "1", Content: "test", Timestamp: time.Now(), ChatID: chatID}
+	msg := Message{ID: "1", Content: "test", Timestamp: time.Now().UnixMilli(), ChatID: chatID}
 	ctx, err := builder.Build(msg)
 
 	if err != nil {
@@ -349,7 +349,7 @@ func TestBuild_MultipleCalls(t *testing.T) {
 		msg := Message{
 			ID:        string(rune('a' + i)),
 			Content:   "test message",
-			Timestamp: time.Now(),
+			Timestamp: time.Now().UnixMilli(),
 			ChatID:    chatID,
 		}
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 	"unicode"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -28,7 +27,7 @@ func initColdDB(dbPath string) (*sql.DB, error) {
 		id TEXT PRIMARY KEY,
 		content TEXT NOT NULL,
 		content_tokens TEXT,
-		timestamp TEXT NOT NULL,
+		timestamp INTEGER NOT NULL,
 		human_ids TEXT,
 		channel TEXT,
 		chat_id TEXT,
@@ -117,7 +116,7 @@ func insertMessage(db *sql.DB, msg Message) error {
 	_, err = db.Exec(`
 		INSERT OR IGNORE INTO messages (id, content, content_tokens, timestamp, human_ids, channel, chat_id, role, stop_reason)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, msg.ID, string(contentJSON), contentTokens, msg.Timestamp.Format("2006-01-02 15:04:05"), string(humanIDsJSON),
+	`, msg.ID, string(contentJSON), contentTokens, msg.Timestamp, string(humanIDsJSON),
 		msg.Channel, msg.ChatID, msg.Role, msg.StopReason)
 
 	return err
@@ -147,10 +146,9 @@ func getRecentMessages(db *sql.DB, chatID string, limit int) ([]Message, error) 
 	for rows.Next() {
 		var msg Message
 		var humanIDsJSON string
-		var timestampStr string
 		var contentJSON string
 
-		err := rows.Scan(&msg.ID, &contentJSON, &timestampStr, &humanIDsJSON,
+		err := rows.Scan(&msg.ID, &contentJSON, &msg.Timestamp, &humanIDsJSON,
 			&msg.Channel, &msg.ChatID, &msg.Role, &msg.StopReason)
 		if err != nil {
 			return nil, err
@@ -166,7 +164,6 @@ func getRecentMessages(db *sql.DB, chatID string, limit int) ([]Message, error) 
 			msg.HumanIDs = []string{}
 		}
 
-		msg.Timestamp = parseTimestamp(timestampStr)
 		messages = append(messages, msg)
 	}
 
@@ -198,10 +195,9 @@ func searchMessages(db *sql.DB, query string) ([]Message, error) {
 	for rows.Next() {
 		var msg Message
 		var humanIDsJSON string
-		var timestampStr string
 		var contentJSON string
 
-		err := rows.Scan(&msg.ID, &contentJSON, &timestampStr, &humanIDsJSON,
+		err := rows.Scan(&msg.ID, &contentJSON, &msg.Timestamp, &humanIDsJSON,
 			&msg.Channel, &msg.ChatID, &msg.Role, &msg.StopReason)
 		if err != nil {
 			return nil, err
@@ -216,7 +212,6 @@ func searchMessages(db *sql.DB, query string) ([]Message, error) {
 			msg.HumanIDs = []string{}
 		}
 
-		msg.Timestamp = parseTimestamp(timestampStr)
 		messages = append(messages, msg)
 	}
 
@@ -240,10 +235,4 @@ func sanitizeFTS5Query(query string) string {
 	return builder.String()
 }
 
-func parseTimestamp(s string) time.Time {
-	t, err := time.Parse("2006-01-02 15:04:05", s)
-	if err != nil {
-		return time.Time{}
-	}
-	return t
-}
+

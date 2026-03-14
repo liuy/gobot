@@ -66,7 +66,7 @@ func TestInsertMessage_BasicInsert(t *testing.T) {
 	msg := Message{
 		ID:        "msg-001",
 		Content:   "Test message content",
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UnixMilli(),
 		HumanIDs:  []string{"user-1", "user-2"},
 		Channel:   "discord",
 		ChatID:    "chat-123",
@@ -101,7 +101,7 @@ func TestInsertMessage_HumanIDsJSON(t *testing.T) {
 	msg := Message{
 		ID:        "msg-002",
 		Content:   "Test",
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UnixMilli(),
 		HumanIDs:  []string{"alice", "bob"},
 	}
 
@@ -156,7 +156,7 @@ func TestGetRecentMessages_WithLimit(t *testing.T) {
 		msg := Message{
 			ID:        string(rune('a' + i)),
 			Content:   "test",
-			Timestamp: time.Now().Add(time.Duration(i) * time.Second),
+			Timestamp: time.Now().Add(time.Duration(i) * time.Second).UnixMilli(),
 			ChatID:    chatID,
 		}
 		if err := insertMessage(db, msg); err != nil {
@@ -188,7 +188,7 @@ func TestGetRecentMessages_DescendingOrder(t *testing.T) {
 		msg := Message{
 			ID:        string(rune('a' + i)),
 			Content:   "test",
-			Timestamp: time.Now().Add(time.Duration(i) * time.Hour),
+			Timestamp: time.Now().Add(time.Duration(i) * time.Hour).UnixMilli(),
 			ChatID:    chatID,
 		}
 		if err := insertMessage(db, msg); err != nil {
@@ -206,7 +206,7 @@ func TestGetRecentMessages_DescendingOrder(t *testing.T) {
 	}
 
 	// getRecentMessages returns oldest first (ascending order by timestamp)
-	if messages[0].Timestamp.After(messages[1].Timestamp) {
+	if messages[0].Timestamp > messages[1].Timestamp {
 		t.Error("Messages should be in ascending order by timestamp (oldest first)")
 	}
 }
@@ -222,9 +222,9 @@ func TestSearchMessages_BasicSearch(t *testing.T) {
 	defer db.Close()
 
 	msgs := []Message{
-		{ID: "1", Content: "Hello world", Timestamp: time.Now()},
-		{ID: "2", Content: "Goodbye world", Timestamp: time.Now()},
-		{ID: "3", Content: "Test message", Timestamp: time.Now()},
+		{ID: "1", Content: "Hello world", Timestamp: time.Now().UnixMilli()},
+		{ID: "2", Content: "Goodbye world", Timestamp: time.Now().UnixMilli()},
+		{ID: "3", Content: "Test message", Timestamp: time.Now().UnixMilli()},
 	}
 
 	for _, msg := range msgs {
@@ -262,7 +262,7 @@ func TestSearchMessages_ChineseSearch(t *testing.T) {
 	msg := Message{
 		ID:        "cn-1",
 		Content:   "今天天气怎么样",
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UnixMilli(),
 	}
 
 	if err := insertMessage(db, msg); err != nil {
@@ -292,7 +292,7 @@ func TestSearchMessages_NoResults(t *testing.T) {
 	msg := Message{
 		ID:        "1",
 		Content:   "Hello world",
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UnixMilli(),
 	}
 
 	if err := insertMessage(db, msg); err != nil {
@@ -306,31 +306,6 @@ func TestSearchMessages_NoResults(t *testing.T) {
 
 	if len(results) != 0 {
 		t.Errorf("Expected 0 results, got %d", len(results))
-	}
-}
-
-func TestParseTimestamp_ValidFormat(t *testing.T) {
-	timeStr := "2024-03-07 12:30:45"
-
-	parsed := parseTimestamp(timeStr)
-
-	if parsed.IsZero() {
-		t.Error("Expected valid time, got zero value")
-	}
-
-	expected := time.Date(2024, 3, 7, 12, 30, 45, 0, time.UTC)
-	if !parsed.Equal(expected) {
-		t.Errorf("Expected %v, got %v", expected, parsed)
-	}
-}
-
-func TestParseTimestamp_InvalidFormat(t *testing.T) {
-	timeStr := "invalid"
-
-	parsed := parseTimestamp(timeStr)
-
-	if !parsed.IsZero() {
-		t.Errorf("Expected zero time for invalid format, got %v", parsed)
 	}
 }
 

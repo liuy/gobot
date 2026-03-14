@@ -15,12 +15,12 @@ func TestAppend_InvalidInput(t *testing.T) {
 		msg     Message
 		wantErr bool
 	}{
-		{"empty ID", Message{ID: "", Content: "test", Timestamp: time.Now()}, true},
-		{"whitespace ID", Message{ID: "   ", Content: "test", Timestamp: time.Now()}, true},
-		{"empty Content", Message{ID: "1", Content: "", Timestamp: time.Now()}, true},
-		{"whitespace Content", Message{ID: "1", Content: "   ", Timestamp: time.Now()}, true},
-		{"zero Timestamp", Message{ID: "1", Content: "test", Timestamp: time.Time{}}, true},
-		{"valid message", Message{ID: "1", Content: "test", Timestamp: time.Now()}, false},
+		{"empty ID", Message{ID: "", Content: "test", Timestamp: time.Now().UnixMilli()}, true},
+		{"whitespace ID", Message{ID: "   ", Content: "test", Timestamp: time.Now().UnixMilli()}, true},
+		{"empty Content", Message{ID: "1", Content: "", Timestamp: time.Now().UnixMilli()}, true},
+		{"whitespace Content", Message{ID: "1", Content: "   ", Timestamp: time.Now().UnixMilli()}, true},
+		{"zero Timestamp", Message{ID: "1", Content: "test", Timestamp: 0}, true},
+		{"valid message", Message{ID: "1", Content: "test", Timestamp: time.Now().UnixMilli()}, false},
 	}
 
 	for _, tt := range tests {
@@ -78,7 +78,7 @@ func TestClose_AfterClose(t *testing.T) {
 	}
 
 	// After close, AddMessage should return error
-	msg := Message{ID: "post-close", Content: "test", Timestamp: time.Now()}
+	msg := Message{ID: "post-close", Content: "test", Timestamp: time.Now().UnixMilli()}
 	if err := cache.AddMessage(msg); err == nil {
 		t.Error("AddMessage after Close should error")
 	}
@@ -95,7 +95,7 @@ func TestAppend_VeryLongContent(t *testing.T) {
 	defer cache.Close()
 
 	longContent := strings.Repeat("test ", 20000)
-	msg := Message{ID: "1", Content: longContent, Timestamp: time.Now()}
+	msg := Message{ID: "1", Content: longContent, Timestamp: time.Now().UnixMilli()}
 
 	if err := cache.Append(msg); err != nil {
 		t.Fatalf("Append failed: %v", err)
@@ -128,7 +128,7 @@ func TestAppend_HighConcurrency(t *testing.T) {
 				msg := Message{
 					ID:        fmt.Sprintf("g%d-m%d", gid, i),
 					Content:   "concurrent test",
-					Timestamp: time.Now(),
+					Timestamp: time.Now().UnixMilli(),
 				}
 				if err := cache.Append(msg); err != nil {
 					done <- err
@@ -166,7 +166,7 @@ func TestGetRecent_RowsError(t *testing.T) {
 		msg := Message{
 			ID:        fmt.Sprintf("recent-%d", i),
 			Content:   fmt.Sprintf("message %d", i),
-			Timestamp: time.Now().Add(time.Duration(i) * time.Second),
+			Timestamp: time.Now().Add(time.Duration(i) * time.Second).UnixMilli(),
 			ChatID:    chatID,
 		}
 		if err := cache.Append(msg); err != nil {
@@ -186,7 +186,7 @@ func TestGetRecent_RowsError(t *testing.T) {
 		t.Errorf("Expected 20 recent messages, got %d", len(recent))
 	}
 
-	if len(recent) > 1 && recent[0].Timestamp.After(recent[1].Timestamp) {
+	if len(recent) > 1 && recent[0].Timestamp > recent[1].Timestamp {
 		t.Error("Recent messages should be in ascending order (oldest first)")
 	}
 }
@@ -274,7 +274,7 @@ func TestInsertMessage_DuplicateID(t *testing.T) {
 	msg := Message{
 		ID:        "dup-1",
 		Content:   "first message",
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UnixMilli(),
 	}
 
 	// First insert via AddMessage
@@ -288,7 +288,7 @@ func TestInsertMessage_DuplicateID(t *testing.T) {
 	msg2 := Message{
 		ID:        "dup-1",
 		Content:   "second message",
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UnixMilli(),
 	}
 	if err := cache.AddMessage(msg2); err != nil {
 		t.Fatalf("Second AddMessage failed: %v", err)

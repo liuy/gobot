@@ -239,7 +239,7 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 	userMessage := memory.Message{
 		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
 		Content:   content,
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UnixMilli(),
 		Role:      "user",
 		ChatID:    sessionKey,
 	}
@@ -407,7 +407,7 @@ func HandleChatSend(conn *gows.Conn, req WSRequest) error {
 		if err := MemoryCache.AddMessage(memory.Message{
 			ID:         fmt.Sprintf("%d", time.Now().UnixNano()),
 			Content:    msgContent,
-			Timestamp:  time.Now(),
+			Timestamp:  time.Now().UnixMilli(),
 			Role:       "assistant",
 			ChatID:     sessionKey,
 			StopReason: finalStopReason,

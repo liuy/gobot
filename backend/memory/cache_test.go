@@ -87,19 +87,19 @@ func TestGetLongterm_CacheHit(t *testing.T) {
 		t.Fatalf("Failed to write longterm.md: %v", err)
 	}
 
-	start := time.Now()
+	start := time.Now().UnixMilli()
 	result1, err := cache.GetLongterm()
 	if err != nil {
 		t.Fatalf("First GetLongterm failed: %v", err)
 	}
-	firstDuration := time.Since(start)
+	firstDuration := time.Now().UnixMilli() - start
 
-	start = time.Now()
+	start = time.Now().UnixMilli()
 	result2, err := cache.GetLongterm()
 	if err != nil {
 		t.Fatalf("Second GetLongterm failed: %v", err)
 	}
-	secondDuration := time.Since(start)
+	secondDuration := time.Now().UnixMilli() - start
 
 	if result1 != result2 {
 		t.Errorf("Results differ: %q vs %q", result1, result2)
@@ -220,7 +220,7 @@ func TestGetRecent_ReturnsInternalSlice(t *testing.T) {
 	}
 	defer cache.Close()
 
-	msg := Message{ID: "1", Content: "test", Timestamp: time.Now(), ChatID: "test-chat"}
+	msg := Message{ID: "1", Content: "test", Timestamp: time.Now().UnixMilli(), ChatID: "test-chat"}
 	if err := cache.Append(msg); err != nil {
 		t.Fatalf("Failed to append message: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestAppend_InsertToDatabase(t *testing.T) {
 	msg := Message{
 		ID:        "test-1",
 		Content:   "Test message",
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UnixMilli(),
 		HumanIDs:  []string{"user-1"},
 	}
 
@@ -283,7 +283,7 @@ func TestAppend_UpdateRecentCache(t *testing.T) {
 	msg := Message{
 		ID:        "test-1",
 		Content:   "Test message",
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UnixMilli(),
 		ChatID:    "test-chat",
 	}
 
@@ -315,8 +315,8 @@ func TestAppend_PrependToRecent(t *testing.T) {
 	}
 	defer cache.Close()
 
-	msg1 := Message{ID: "1", Content: "First", Timestamp: time.Now(), ChatID: "test-chat"}
-	msg2 := Message{ID: "2", Content: "Second", Timestamp: time.Now(), ChatID: "test-chat"}
+	msg1 := Message{ID: "1", Content: "First", Timestamp: time.Now().UnixMilli(), ChatID: "test-chat"}
+	msg2 := Message{ID: "2", Content: "Second", Timestamp: time.Now().UnixMilli(), ChatID: "test-chat"}
 
 	if err := cache.Append(msg1); err != nil {
 		t.Fatalf("Append msg1 failed: %v", err)
@@ -365,7 +365,7 @@ func TestAppend_Concurrent(t *testing.T) {
 			msg := Message{
 				ID:        fmt.Sprintf("msg-%d", id), // 修复：生成唯一 ID
 				Content:   "concurrent test",
-				Timestamp: time.Now(),
+				Timestamp: time.Now().UnixMilli(),
 				ChatID:    chatID,
 			}
 			if err := cache.Append(msg); err != nil {
@@ -396,7 +396,7 @@ func TestClose_GracefulShutdown(t *testing.T) {
 		t.Fatalf("Failed to create MemoryCache: %v", err)
 	}
 
-	msg := Message{ID: "1", Content: "test", Timestamp: time.Now()}
+	msg := Message{ID: "1", Content: "test", Timestamp: time.Now().UnixMilli()}
 	cache.Append(msg)
 
 	if err := cache.Close(); err != nil {
@@ -448,7 +448,7 @@ func TestSearch_ValidQuery(t *testing.T) {
 	msg := Message{
 		ID:        "1",
 		Content:   "Hello world",
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UnixMilli(),
 	}
 	if err := cache.Append(msg); err != nil {
 		t.Fatalf("Append failed: %v", err)
@@ -474,13 +474,13 @@ func TestAddMessage_NonBlocking(t *testing.T) {
 	}
 	defer cache.Close()
 
-	msg := Message{ID: "1", Content: "test", Timestamp: time.Now()}
+	msg := Message{ID: "1", Content: "test", Timestamp: time.Now().UnixMilli()}
 
-	start := time.Now()
+	start := time.Now().UnixMilli()
 	cache.AddMessage(msg)
-	duration := time.Since(start)
+	duration := time.Now().UnixMilli() - start
 
-	if duration > 10*time.Millisecond {
+	if duration > 10 {
 		t.Errorf("AddMessage took too long: %v", duration)
 	}
 }
@@ -495,7 +495,7 @@ func TestMemoryCache_ConcurrentReads(t *testing.T) {
 	defer cache.Close()
 
 	chatID := "test-chat-reads"
-	msg := Message{ID: "1", Content: "test", Timestamp: time.Now(), ChatID: chatID}
+	msg := Message{ID: "1", Content: "test", Timestamp: time.Now().UnixMilli(), ChatID: chatID}
 	if err := cache.Append(msg); err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -540,7 +540,7 @@ func TestMemoryCache_ConcurrentReadWriteRace(t *testing.T) {
 			msg := Message{
 				ID:        fmt.Sprintf("race-test-%d", id),
 				Content:   "concurrent write test",
-				Timestamp: time.Now(),
+				Timestamp: time.Now().UnixMilli(),
 				ChatID:    chatID,
 			}
 			if err := cache.Append(msg); err != nil {
